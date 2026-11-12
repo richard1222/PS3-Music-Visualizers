@@ -6,6 +6,8 @@
 
 ## Current truth
 
+**Latest proven hardware result:** Static Miku artwork now renders inside the existing music player's full-screen UI. It appeared on two opens, the owner confirmed seeing it, and the native control panel opened and closed over the picture. The successful test used an independently verified HDD mapping while the audio-player module was unloaded, with no XMB reload. See the [hardware result](NATIVE_MIKU_SUCCESS.md). Animation, beat response, seven-character rotation and reboot persistence remain unfinished. Earlier negative results below are preserved as history.
+
 **Proven:** The owner explicitly corrected the scope to the built-in PS3 visualizer. Browser-viewer source and instructions have been removed from the main branch. The earlier commit remains historical and is not the current route.
 
 **Proven:** All 14 downloaded planet resources passed the pinned archive hash, exact member allowlist, bounded zlib checks and table bounds. A local original Earth resource was added as slot 1. All 15 HDD slots were independently read back unchanged on one console.
@@ -28,11 +30,11 @@
 
 **Proven:** The failed build is preserved outside the numbered selection folder. A new one-tile candidate exists locally with zero unpacked-size growth and no camera, menu or code changes. It has not been deployed. See the [offline texture study](OFFLINE_TEXTURE_STUDY.md).
 
-**Unknown:** How to display full-screen artwork through the native renderer while preserving its existing playback behavior. No native anime screenshot or audio-response result exists. There is no replacement app or browser solution in the current source tree.
+**Unknown:** Animation, audio response, long-session stability and rotation between the seven selected characters. Native full-screen static artwork and native control-panel visibility now have screenshot evidence. There is no replacement app or browser solution in the current source tree.
 
 ## In plain language
 
-The planet files are installed on the HDD, and Jupiter has been seen in native Gaia. A subsequent local anime/camera prototype was followed by a freeze; the console restarted and accepted the original Earth selection. The requested native anime feature is still unfinished. A successful file upload is not the same as seeing it in the music player.
+The planet files are installed on the HDD, and Jupiter has been seen in native Gaia. Earlier anime experiments failed, but the newer audio-player UI route now displays Miku full-screen. The native control panel remains available. The larger visualizer feature is unfinished: movement and the remaining character rotation still need implementation and hardware evidence.
 
 ## Evidence
 
@@ -45,4 +47,4 @@ The planet files are installed on the HDD, and Jupiter has been seen in native G
 
 ## Next
 
-Continue offline inspection of the audio-player full-screen page initialization, visibility and resource lifecycle. Further console activation is suspended after the recovery incident; the private helper's prior static activation and XMB reload actions refuse execution. Keep the restored original UI active and the native anime feature marked unfinished until actual playback demonstrates it.
+Preserve the proven static Miku candidate and prepare a separate finite movement candidate offline. The older private static activation and XMB reload shortcuts remain disabled. The newer test helper checks Cobra and unloaded audio-player modules before changing its specific mapping. Do not treat a static image as proof of animation, audio response or reboot persistence.

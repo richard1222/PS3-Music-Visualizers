@@ -1,5 +1,7 @@
 # RR — Native music UI image and motion probe
 
+> Latest result: the audio-player full-screen profile now displays static Miku artwork on hardware, with native controls. See [native Miku result](NATIVE_MIKU_SUCCESS.md). The motion candidate described below remains untested.
+
 > Historical offline-build record. A later **static** variant was tested and showed no artwork. An XMB reload after removing its mapping was followed by owner-reported recovery mode. The motion variant described below remains untested. See the superseding [UI test result](NATIVE_UI_TEST_RESULT.md); the next target is an offline audio-player full-screen candidate. Further console activation is suspended.
 
 - Audience: owner and contributors

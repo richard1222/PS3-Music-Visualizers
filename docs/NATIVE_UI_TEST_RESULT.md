@@ -1,5 +1,7 @@
 # Native music UI — RR negative result
 
+> Historical failed experiment. A later audio-player full-screen test successfully displayed static Miku artwork and retained the native control panel. See the superseding [hardware result](NATIVE_MIKU_SUCCESS.md). The failures and recovery incident below remain part of the record.
+
 - Audience: maintainers and the console owner.
 - Date: November 12, 2026.
 - Scope: adding one static artwork plane to the existing music UI.
