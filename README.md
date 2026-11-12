@@ -17,11 +17,11 @@ See [current status](docs/STATUS.md) and [native integration research](docs/NATI
 
 | Workstream | Evidence | Limit |
 | --- | --- | --- |
-| Planet pack | 14 creator QRCs validated; 15 HDD slots including the owner's original Earth independently read back | Native rendering is not yet confirmed |
-| Planet selection | webMAN reports Fixed for Jupiter | Nonstandard HTTP status and an inconclusive flash-path mapping readback remain recorded |
+| Planet pack | 14 creator QRCs validated; 15 HDD slots including the owner's original Earth independently read back; Jupiter observed in native Gaia | Other planets have not each been observed |
+| Resource selection | Original Earth selection accepted after recovery from an anime-test freeze | Automatic selection is disabled; an XMB status string cannot establish that the renderer is unloaded |
 | Anime artwork | Seven female-character images from all four requested series downloaded, visually reviewed and fitted locally | Artwork preparation is not native integration |
-| Native anime integration | Existing Gaia, Canyon and Wave resources are under inspection | Full-screen rendering in the built-in player remains unimplemented |
-| Host checks | 15 tests pass | Tests do not establish console rendering or music playback |
+| Native anime integration | A local artwork/camera prototype was followed by a console freeze | Failed experiment; no native anime success or audio response established |
+| Host checks | 22 tests pass | Tests do not establish console rendering or music playback |
 
 ## Scope correction
 
@@ -38,7 +38,7 @@ python tools/install_hdd.py --planets local/planets
 
 The second command prints a plan without network access. To install, add `--host YOUR_PS3_LAN_IP --apply --receipt receipts/install.json`. Use your own console address and remain on XMB. Files go only into the HDD resource slots; the tool does not overwrite firmware, change the theme or touch trophies.
 
-Optionally supply `--original path/to/your/earth.qrc` when preparing resources. It adds a first slot for the original Earth, shifting the downloaded planet slot numbers. Consult the generated manifest. `--activate N` requests a fixed webMAN selection; an HTTP response alone is not treated as proof of rendered output.
+Optionally supply `--original path/to/your/earth.qrc` when preparing resources. It adds a first slot for the original Earth, shifting the downloaded planet slot numbers. Consult the generated manifest. **Automatic selection (`--activate`) is disabled after a console freeze.** The installer stages files only. Do not change a resource mapping while music or its Visual Player is active; `(XMB)` is also reported during playback and cannot establish that switching is safe. See the [failed experiment](docs/ANIME_TEST_FAILURE.md).
 
 For updates, `--previous-receipt receipts/previous.json` permits replacement only when the existing file matches that prior receipt, with a preserved backup. Existing different files are otherwise refused.
 

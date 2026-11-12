@@ -83,11 +83,11 @@ def upload_new(ftp,item,replace_sha=None):
     return "updated-with-backup" if original is not None else "installed"
 
 def install(host,files,activate=None,previous=None):
+    # XMB is also reported while Visual Player is active. It cannot prove
+    # the renderer has released its resource; never hot-select from here.
+    if activate is not None:
+        raise ValueError("Automatic selection disabled after a console freeze; this installer only stages HDD files")
     host=private_host(host)
-    if activate is not None and (type(activate) is not int or not 1<=activate<=254):
-        raise ValueError("Activation slot bound")
-    if activate is not None and EARTH_ROOT+"/"+str(activate)+".qrc" not in [i["target"] for i in files]:
-        raise ValueError("Activation slot is not in this verified plan")
     with urllib.request.urlopen("http://"+host+"/cpursx.ps3",timeout=6) as response:status=response.read(65537)
     if len(status)>65536 or b"(XMB)" not in status:raise ValueError("XMB required")
     receipt={"complete":False,"flash_writes":False,"files":[]}
@@ -106,20 +106,6 @@ def install(host,files,activate=None,previous=None):
         for item in files:
             if read_remote(ftp,item["target"],len(item["data"]))!=item["data"]:
                 raise ValueError("Final verification differs")
-    if activate is not None:
-        receipt["activation_requested"]=activate
-        try:
-            with urllib.request.urlopen("http://"+host+"/earth.ps3?"+str(activate),timeout=8) as response:response.read(65537)
-        except Exception as error:
-            receipt["activation_http_error"]=type(error).__name__+": "+str(error)
-        wanted=next(i["data"] for i in files if i["target"]==EARTH_ROOT+"/"+str(activate)+".qrc")
-        with ftplib.FTP(host,timeout=10) as ftp:
-            ftp.login()
-            mapped=read_remote(ftp,"/dev_flash/vsh/resource/qgl/earth.qrc",16*1024*1024)
-        receipt["activation_mapping_verified"]=mapped==wanted
-        if not receipt["activation_mapping_verified"]:
-            receipt["complete"]=False
-            return receipt
     receipt["complete"]=True
     return receipt
 
@@ -127,6 +113,7 @@ if __name__=="__main__":
     p=argparse.ArgumentParser();p.add_argument("--planets",type=Path,required=True)
     p.add_argument("--host");p.add_argument("--apply",action="store_true");p.add_argument("--activate",type=int);p.add_argument("--receipt",type=Path);p.add_argument("--previous-receipt",type=Path)
     a=p.parse_args();plan=build_plan(a.planets)
+    if a.activate is not None:p.error("--activate is disabled after a console freeze; stage files only")
     if a.apply:
         if not a.host or not a.receipt:p.error("--apply requires --host and --receipt")
         if a.receipt.exists():p.error("Receipt exists")

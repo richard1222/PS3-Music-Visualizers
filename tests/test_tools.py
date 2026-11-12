@@ -1,8 +1,9 @@
 from pathlib import Path
 import ftplib,hashlib,io,json,struct,sys,tempfile,unittest,zlib
+from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"tools"))
 from qrc import inspect_qrc
-from install_hdd import build_plan,private_host,upload_new
+from install_hdd import build_plan,private_host,upload_new,install
 
 def resource():
     raw=struct.pack(">4s13I",b"QRCF",0x110,*([64,0]*6))+bytes(8)
@@ -37,6 +38,12 @@ class QrcTests(unittest.TestCase):
         with self.assertRaises(ValueError):inspect_qrc(b"QRCC"+struct.pack(">I",64)+zlib.compress(raw))
 
 class InstallTests(unittest.TestCase):
+    def test_activation_refused_before_any_network(self):
+        with patch('install_hdd.urllib.request.urlopen') as http, patch('install_hdd.ftplib.FTP') as ftp:
+            with self.assertRaisesRegex(ValueError,'Automatic selection disabled'):
+                install('192.168.2.10',[self.item()],activate=1)
+            http.assert_not_called()
+            ftp.assert_not_called()
     def item(self):return {"target":"/dev_hdd0/tmp/earth/1.qrc","data":resource()}
     def test_new_upload_readback(self):
         ftp=FTP();item=self.item();self.assertEqual(upload_new(ftp,item),"installed");self.assertEqual(ftp.files[item["target"]],item["data"])

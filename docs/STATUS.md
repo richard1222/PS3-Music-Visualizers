@@ -10,17 +10,17 @@
 
 **Proven:** All 14 downloaded planet resources passed the pinned archive hash, exact member allowlist, bounded zlib checks and table bounds. A local original Earth resource was added as slot 1. All 15 HDD slots were independently read back unchanged on one console.
 
-**Proven negative result:** webMAN 1.47.50d returned `HTTP/1.1 1225 OK` for Jupiter selection. The raw response body said Fixed and named the requested resource. Reading the flash path through FTP did not match Jupiter; that read is not accepted as activation proof. Native planet rendering is not yet verified.
+**Proven negative result:** webMAN 1.47.50d returned `HTTP/1.1 1225 OK` for Jupiter selection. The raw response body said Fixed and named the requested resource. Reading the flash path through FTP did not match Jupiter; that read is not accepted as activation proof. A later screenshot directly showed Jupiter inside native Gaia; the earlier mapping read remains inconclusive.
 
 **Proven:** Seven female-character artworks spanning Fate/stay night, One Piece, Hatsune Miku and High School DxD were downloaded, visually reviewed and fitted locally. Their source URLs and hashes are retained privately. The original browser-oriented staging does not count as native artwork installation.
 
-**Proven:** The initial 15 host tests pass, including backed-up updates and rename recovery.
+**Proven:** 22 host tests pass, including backed-up updates, rename recovery, offline QRC editing and rejection of automatic selection before network access.
 
 **Unknown:** How to display full-screen artwork through the native renderer while preserving its existing playback behavior. No native anime screenshot or audio-response result exists. There is no replacement app or browser solution in the current source tree.
 
 ## In plain language
 
-The planet files are installed on the HDD, and the artwork is ready for development. The requested native anime feature is still unfinished. A successful file upload is not the same as seeing it in the music player.
+The planet files are installed on the HDD, and Jupiter has been seen in native Gaia. A subsequent local anime/camera prototype was followed by a freeze; the console restarted and accepted the original Earth selection. The requested native anime feature is still unfinished. A successful file upload is not the same as seeing it in the music player.
 
 ## Evidence
 
@@ -28,8 +28,9 @@ The planet files are installed on the HDD, and the artwork is ready for developm
 - Each creator QRC parsed locally into 374 bounded nodes.
 - Native Gaia and Canyon resources were backed up; the existing Wave resource was read for local inspection.
 - No firmware bytes, artwork, console registry or private deployment receipts are published.
-- No native music-visualizer screenshot is available yet; ordinary XMB or external-viewer images are not substituted as proof.
+- Private native Jupiter screenshot: `native-gaia-settled-005.png`; recovered XMB screenshot: `recovery-xmb-007.png`. Local console information is excluded from publication.
+- [Failed native anime experiment and recovery](ANIME_TEST_FAILURE.md): no native anime rendering was captured; cause unknown.
 
 ## Next
 
-Trace the stock Wave/Canyon/Gaia resource routes and determine a supported full-screen texture path. Prototype through a reversible HDD remap, then verify the actual built-in music screen. Preserve previous failures and keep the native feature marked unfinished until that test passes.
+Trace the stock Wave/Canyon/Gaia resource routes and determine a supported full-screen texture path. Automatic selection is disabled following the freeze. Inspect the failed artifact locally and establish safe selection conditions before another hardware experiment, then verify the actual built-in music screen. Preserve previous failures and keep the native feature marked unfinished until that test passes.
