@@ -11,4 +11,6 @@ The owner requested cute, attractive female-character artwork. The primary selec
 
 These four were visually reviewed locally. The fitted copies preserve the complete source image with padding where needed. The darker Miku scenes remain alternate artwork inputs.
 
+The owner explicitly approved the smiling cherry-blossom Miku picture on November 12, 2026. Keep that selection while native renderer integration continues.
+
 Source credits and hashes accompany the private files. Artwork is not included in this public repository. Selection and fitting do not establish rendering in the built-in music visualizer.

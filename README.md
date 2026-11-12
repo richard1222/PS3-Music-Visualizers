@@ -21,7 +21,7 @@ See [current status](docs/STATUS.md) and [native integration research](docs/NATI
 | Resource selection | Original Earth selection accepted after recovery from an anime-test freeze | Automatic selection is disabled; an XMB status string cannot establish that the renderer is unloaded |
 | Anime artwork | Eight female-character images reviewed locally, with four primary selections spanning the requested series | Artwork preparation is not native integration |
 | Native anime integration | A local artwork/camera prototype was followed by a console freeze | Failed experiment; no native anime success or audio response established |
-| Host checks | 32 tests pass | Tests do not establish console rendering or music playback |
+| Host checks | 40 tests pass | Tests do not establish console rendering or music playback |
 
 ## Scope correction
 

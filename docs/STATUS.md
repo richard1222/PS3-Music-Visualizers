@@ -16,7 +16,9 @@
 
 **Proven:** Read-only module inspection found static reference sequences for Wave's monthly background paths and Canyon's normal map. The [binding study](NATIVE_BINDING_STUDY.md) records the addresses and limits; a flat HD artwork route remains unverified.
 
-**Proven:** 32 host tests pass, including backed-up updates, rename recovery, offline QRC editing, fixed-size JPEG constraints and rejection of automatic selection before network access.
+**Proven:** 40 host tests pass, including backed-up updates, rename recovery, offline QRC editing, fixed-size JPEG constraints, read-only fragment inspection and rejection of automatic selection before network access.
+
+**Proven:** The owner approved the smiling Miku picture. The [background sampling study](BACKGROUND_SAMPLING.md) found no texture reads in background shader variant 1, the number recorded in the music preset. Complete runtime selection and image binding remain unverified.
 
 **Proven:** The failed build is preserved outside the numbered selection folder. A new one-tile candidate exists locally with zero unpacked-size growth and no camera, menu or code changes. It has not been deployed. See the [offline texture study](OFFLINE_TEXTURE_STUDY.md).
 
