@@ -1,5 +1,7 @@
 # RR — Native music UI image and motion probe
 
+> Historical offline-build record. A later **static** variant was tested and showed no artwork. An XMB reload after removing its mapping was followed by owner-reported recovery mode. The motion variant described below remains untested. See the superseding [UI test result](NATIVE_UI_TEST_RESULT.md); the next target is an offline audio-player full-screen candidate. Further console activation is suspended.
+
 - Audience: owner and contributors
 - Date: November 12, 2026
 - Scope: local resource authoring for the existing sound visualizer plugin

@@ -16,9 +16,11 @@
 
 **Proven:** Read-only module inspection found static reference sequences for Wave's monthly background paths and Canyon's normal map. The [binding study](NATIVE_BINDING_STUDY.md) records the addresses and limits; a flat HD artwork route remains unverified.
 
-**Proven:** 47 host tests pass, including backed-up updates, rename recovery, offline QRC editing, fixed-size JPEG constraints, read-only fragment inspection, native UI probe preservation and rejection of automatic selection before network access.
+**Proven:** 51 host tests pass, including backed-up updates, rename recovery, offline QRC editing, fixed-size JPEG constraints, read-only fragment inspection, native UI probe preservation, explicit audio-player profile validation and rejection of automatic selection before network access.
 
 **Proven:** The [native UI probe](NATIVE_UI_PROBE.md) now contains the approved Miku image and a finite timed zoom/fade definition. Independent extraction preserves the intended animation references, original UI structure and original asset bytes after a bounded local payload repair. It has not been deployed; visibility and animation on the PS3 are unverified.
+
+**Proven negative result:** A separate static soundvisualizer UI candidate was tested: native Earth and Wave appeared, but the artwork did not. An XMB reload after removing that mapping was followed by lost network access and owner-reported recovery mode. The owner exited recovery; a subsequent read matched the original soundvisualizer resource hash. A new audio-player full-screen candidate passes offline extraction, but has not been uploaded. See the [UI test result and incident](NATIVE_UI_TEST_RESULT.md).
 
 **Proven:** The earlier broad roster has been narrowed to the selected seven. Native character rotation remains unfinished.
 
@@ -43,4 +45,4 @@ The planet files are installed on the HDD, and Jupiter has been seen in native G
 
 ## Next
 
-Trace the stock Wave/Canyon/Gaia resource routes and determine a supported full-screen texture path. Automatic selection is disabled following the freeze. Inspect the failed artifact locally and establish safe selection conditions before another hardware experiment, then verify the actual built-in music screen. Preserve previous failures and keep the native feature marked unfinished until that test passes.
+Continue offline inspection of the audio-player full-screen page initialization, visibility and resource lifecycle. Further console activation is suspended after the recovery incident; the private helper's prior static activation and XMB reload actions refuse execution. Keep the restored original UI active and the native anime feature marked unfinished until actual playback demonstrates it.

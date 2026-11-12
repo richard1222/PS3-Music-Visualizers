@@ -8,6 +8,17 @@ def fixture():
     return '''<RcoFile><MainTree name="soundvisualizer"><ImageTree><Image name="original" src="original.gim"/></ImageTree><ObjectTree><Page name="page_soundvisualizer0" onInit="event:native:/OnPageInit"/><Page name="page_soundvisualizer1" onInit="event:native:/OnPageInit"/><Page name="page_soundvisualizer2"><Plane name="page2_plane_seat" image="nothing" alphaScale="0.4"><Button name="control"/></Plane></Page></ObjectTree></MainTree></RcoFile>'''
 
 
+def audio_fixture():
+    root=ET.fromstring('<RcoFile><MainTree name="sample"><ImageTree><Image name="original" src="original.gim"/></ImageTree><ObjectTree/></MainTree></RcoFile>')
+    objects=root.find('MainTree/ObjectTree')
+    for name,callback in [('full_screen_page','OnFullScreenPageInit'),('back_screen_page','OnBackScreenPageInit'),
+                          ('control_panel_page','OnControlPanelPageInit'),('title_information_page','OnTitleInformationPageInit')]:
+        page=ET.SubElement(objects,'Page',name=name,onInit='event:native:/AudioPlayerPlugin::'+callback)
+        if name=='back_screen_page':ET.SubElement(page,'Plane',name='back_screen_plane',image='image:original',alphaScale='0')
+        if name=='control_panel_page':ET.SubElement(page,'Button',name='keep_control')
+    return ET.tostring(root,encoding='unicode')
+
+
 class MusicPlaneTests(unittest.TestCase):
     def test_existing_resource_survives_probe_removal(self):
         source=fixture();out=ET.fromstring(add_probe(source,'art.gim'))
@@ -28,6 +39,23 @@ class MusicPlaneTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'soundvisualizer'):add_probe(fixture().replace('name="soundvisualizer"','name="custom_render_plugin"'),'art.gim')
     def test_missing_native_template_refused(self):
         with self.assertRaisesRegex(ValueError,'template'):add_probe(fixture().replace('page2_plane_seat','different'),'art.gim')
+    def test_audioplayer_requires_explicit_profile_and_preserves_existing_ui(self):
+        source=audio_fixture()
+        with self.assertRaises(ValueError):add_probe(source,'art.gim')
+        out=ET.fromstring(add_probe(source,'art.gim',target='audioplayer'))
+        main=out.find('MainTree');images=main.find('ImageTree');objects=main.find('ObjectTree')
+        self.assertEqual(objects[0][0].get('name'),PLANE_NAME)
+        images.remove(images[-1]);objects[0].remove(objects[0][0])
+        self.assertEqual(ET.tostring(out),ET.tostring(ET.fromstring(source)))
+    def test_generic_sample_resource_and_changed_callbacks_refused(self):
+        source=audio_fixture().replace('OnControlPanelPageInit','DifferentCallback')
+        with self.assertRaisesRegex(ValueError,'native page'):add_probe(source,'art.gim',target='audioplayer')
+    def test_audioplayer_populated_fullscreen_page_preserved(self):
+        root=ET.fromstring(audio_fixture())
+        ET.SubElement(root.find('MainTree/ObjectTree/Page'),'Text',name='keep')
+        with self.assertRaisesRegex(ValueError,'empty music page'):add_probe(ET.tostring(root),'art.gim',target='audioplayer')
+    def test_unknown_profile_refused(self):
+        with self.assertRaisesRegex(ValueError,'Unknown'):add_probe(audio_fixture(),'art.gim',target='other')
     def test_cli_formats_appended_image_for_compiler(self):
         with tempfile.TemporaryDirectory() as temp:
             folder=Path(temp);(folder/'input.xml').write_text(fixture())
