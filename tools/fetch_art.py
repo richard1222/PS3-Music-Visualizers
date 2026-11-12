@@ -3,6 +3,7 @@ from pathlib import Path
 import argparse,hashlib,json,time,urllib.request
 
 ART = [
+    {"file":"miku-spring-smile.jpg", "page":"https://wall.alphacoders.com/big.php?i=736713", "url":"https://images.alphacoders.com/736/thumb-1920-736713.jpg", "title":"Miku smiling among cherry blossoms", "series":"Hatsune Miku"},
     {"file":"miku-city.jpg", "page":"https://wall.alphacoders.com/big.php?i=578968", "url":"https://images6.alphacoders.com/578/578968.jpg", "title":"Moonlit Dreamscape with Hatsune Miku"},
     {"file":"miku-cosmic.jpg", "page":"https://wall.alphacoders.com/big.php?i=651169", "url":"https://images3.alphacoders.com/651/thumb-1920-651169.jpg", "title":"Cosmic Vocaloid Dreamscape"},
     {"file":"miku-piano.jpg", "page":"https://wall.alphacoders.com/big.php?i=736787", "url":"https://images2.alphacoders.com/736/736787.jpg", "title":"Enchanting Vocaloid Piano Night", "artist":"DMiTH"},

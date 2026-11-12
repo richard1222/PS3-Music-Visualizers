@@ -27,4 +27,4 @@ foreach($item in $credits){
  $item.bytes=(Get-Item -LiteralPath $target).Length
  $item | Add-Member -NotePropertyName deployed_size -NotePropertyValue @(1280,720)
 }
-$credits | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $outputRoot 'credits.json') -Encoding utf8
+ConvertTo-Json -InputObject @($credits) -Depth 8 | Set-Content -LiteralPath (Join-Path $outputRoot 'credits.json') -Encoding utf8

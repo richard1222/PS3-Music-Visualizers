@@ -12,7 +12,9 @@
 
 **Proven negative result:** webMAN 1.47.50d returned `HTTP/1.1 1225 OK` for Jupiter selection. The raw response body said Fixed and named the requested resource. Reading the flash path through FTP did not match Jupiter; that read is not accepted as activation proof. A later screenshot directly showed Jupiter inside native Gaia; the earlier mapping read remains inconclusive.
 
-**Proven:** Seven female-character artworks spanning Fate/stay night, One Piece, Hatsune Miku and High School DxD were downloaded, visually reviewed and fitted locally. Their source URLs and hashes are retained privately. The original browser-oriented staging does not count as native artwork installation.
+**Proven:** Eight female-character artworks spanning Fate/stay night, One Piece, Hatsune Miku and High School DxD were downloaded, visually reviewed and fitted locally. Four [primary selections](ART_SELECTION.md) now follow the owner's artwork preference. Their source URLs and hashes are retained privately. The original browser-oriented staging does not count as native artwork installation.
+
+**Proven:** Read-only module inspection found static reference sequences for Wave's monthly background paths and Canyon's normal map. The [binding study](NATIVE_BINDING_STUDY.md) records the addresses and limits; a flat HD artwork route remains unverified.
 
 **Proven:** 32 host tests pass, including backed-up updates, rename recovery, offline QRC editing, fixed-size JPEG constraints and rejection of automatic selection before network access.
 

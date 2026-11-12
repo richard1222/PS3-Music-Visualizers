@@ -7,6 +7,7 @@ The requested target is the existing PS3 music player, using its Visual Player m
 - Gaia loads `qgl/earth.qrc`; the creator's planet pack modifies that existing globe renderer.
 - Canyon loads `qgl/canyon.qrc`; its stock resource contains presets, a normal-map texture and shader objects. The presence of unused slideshow shaders alone does not establish an available full-screen photo mode.
 - Wave uses the existing `qgl/lines.qrc` resources, including music-specific overrides. Its texture and background paths still need inspection.
+- The [native binding study](NATIVE_BINDING_STUDY.md) identifies local instruction references to monthly background textures and Canyon's normal map. It has not established a usable HD artwork plane.
 
 The local firmware files are research inputs and remain unpublished. Resource validation is bounded and does not execute embedded code.
 
