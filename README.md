@@ -21,7 +21,7 @@ See [current status](docs/STATUS.md) and [native integration research](docs/NATI
 | Resource selection | Original Earth selection accepted after recovery from an anime-test freeze | Automatic selection is disabled; an XMB status string cannot establish that the renderer is unloaded |
 | Anime artwork | Seven female-character images from all four requested series downloaded, visually reviewed and fitted locally | Artwork preparation is not native integration |
 | Native anime integration | A local artwork/camera prototype was followed by a console freeze | Failed experiment; no native anime success or audio response established |
-| Host checks | 22 tests pass | Tests do not establish console rendering or music playback |
+| Host checks | 32 tests pass | Tests do not establish console rendering or music playback |
 
 ## Scope correction
 
@@ -51,6 +51,8 @@ python tools/fetch_art.py local/art-original
 On Windows, `tools/fit_art.ps1 -InputFolder FULL_INPUT_PATH -OutputFolder FULL_NEW_OUTPUT_PATH` creates 1280x720 copies while retaining the complete image and source credits. These tools prepare research inputs. **They do not inject artwork into the native visualizer.** Downloaded artwork is excluded from Git.
 
 ## Validation
+
+For local resource research, `python tools/audit_native.py BASE.qrc CANDIDATE.qrc --report NEW_REPORT.json` compares resource changes, JPEG frame profiles, camera/menu changes and unpacked size. It makes no console connection. See the [offline texture study](docs/OFFLINE_TEXTURE_STUDY.md) for the one-tile comparison and its limits.
 
 ```text
 python -m unittest discover -s tests -v

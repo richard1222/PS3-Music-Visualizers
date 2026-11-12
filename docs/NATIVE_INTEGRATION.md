@@ -10,6 +10,10 @@ The requested target is the existing PS3 music player, using its Visual Player m
 
 The local firmware files are research inputs and remain unpublished. Resource validation is bounded and does not execute embedded code.
 
+## After the first freeze
+
+The [failed experiment](ANIME_TEST_FAILURE.md) changed textures and camera/menu data together. Automatic selection is disabled. The [offline one-tile study](OFFLINE_TEXTURE_STUDY.md) now preserves the container layout and scene data; it has not been installed. Full-screen artwork and audio response remain separate, unmet acceptance criteria.
+
 ## Acceptance criteria
 
 1. Full-screen female-character artwork is visible inside the built-in music player.

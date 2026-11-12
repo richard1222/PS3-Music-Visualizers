@@ -14,7 +14,9 @@
 
 **Proven:** Seven female-character artworks spanning Fate/stay night, One Piece, Hatsune Miku and High School DxD were downloaded, visually reviewed and fitted locally. Their source URLs and hashes are retained privately. The original browser-oriented staging does not count as native artwork installation.
 
-**Proven:** 22 host tests pass, including backed-up updates, rename recovery, offline QRC editing and rejection of automatic selection before network access.
+**Proven:** 32 host tests pass, including backed-up updates, rename recovery, offline QRC editing, fixed-size JPEG constraints and rejection of automatic selection before network access.
+
+**Proven:** The failed build is preserved outside the numbered selection folder. A new one-tile candidate exists locally with zero unpacked-size growth and no camera, menu or code changes. It has not been deployed. See the [offline texture study](OFFLINE_TEXTURE_STUDY.md).
 
 **Unknown:** How to display full-screen artwork through the native renderer while preserving its existing playback behavior. No native anime screenshot or audio-response result exists. There is no replacement app or browser solution in the current source tree.
 
