@@ -3,12 +3,11 @@ from pathlib import Path
 import argparse,ftplib,hashlib,io,ipaddress,json,urllib.request
 from qrc import inspect_qrc
 
-WEB_ROOT = "/dev_hdd0/PS3-Music-Visualizers"
 EARTH_ROOT = "/dev_hdd0/tmp/earth"
 
 def digest(data): return hashlib.sha256(data).hexdigest()
 
-def build_plan(planets=None, web=None):
+def build_plan(planets=None):
     files=[]
     if planets:
         folder=Path(planets);manifest=json.loads((folder/"manifest.json").read_text())
@@ -24,14 +23,7 @@ def build_plan(planets=None, web=None):
             data=(folder/leaf).read_bytes();detail=inspect_qrc(data)
             if detail["sha256"] != item["sha256"]: raise ValueError("Resource hash differs")
             files.append({"source":folder/leaf,"target":EARTH_ROOT+"/"+leaf,"data":data})
-    if web:
-        folder=Path(web)
-        for leaf in ("index.html","visualizer.js","art/miku-city.jpg","art/miku-cosmic.jpg","art/miku-piano.jpg","art/credits.json"):
-            p=folder/leaf;data=p.read_bytes()
-            if len(data)>8*1024*1024: raise ValueError("Web asset bound")
-            if p.suffix==".jpg" and not data.startswith(b"\xff\xd8"):raise ValueError("JPEG expected")
-            files.append({"source":p,"target":WEB_ROOT+"/"+leaf,"data":data})
-    if not files:raise ValueError("Select --planets or --web")
+    if not files:raise ValueError("Select --planets")
     return files
 
 def private_host(host):
@@ -103,8 +95,7 @@ def install(host,files,activate=None,previous=None):
         ftp.login();ftp.voidcmd("TYPE I")
         directories=sorted({str(Path(i["target"]).parent).replace("\\","/") for i in files},key=lambda x:(x.count("/"),x))
         for folder in directories:
-            # All directories stay under the two fixed HDD roots.
-            if not (folder==EARTH_ROOT or folder==WEB_ROOT or folder==WEB_ROOT+"/art"):
+            if folder!=EARTH_ROOT:
                 raise ValueError("Unexpected destination directory")
             try:ftp.mkd(folder)
             except ftplib.error_perm:
@@ -133,9 +124,9 @@ def install(host,files,activate=None,previous=None):
     return receipt
 
 if __name__=="__main__":
-    p=argparse.ArgumentParser();p.add_argument("--planets",type=Path);p.add_argument("--web",type=Path)
+    p=argparse.ArgumentParser();p.add_argument("--planets",type=Path,required=True)
     p.add_argument("--host");p.add_argument("--apply",action="store_true");p.add_argument("--activate",type=int);p.add_argument("--receipt",type=Path);p.add_argument("--previous-receipt",type=Path)
-    a=p.parse_args();plan=build_plan(a.planets,a.web)
+    a=p.parse_args();plan=build_plan(a.planets)
     if a.apply:
         if not a.host or not a.receipt:p.error("--apply requires --host and --receipt")
         if a.receipt.exists():p.error("Receipt exists")

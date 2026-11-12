@@ -1,30 +1,35 @@
-# RR â€” Music visuals status
+# RR — Native music visualizer status
 
 - Date: November 12, 2026
 - Audience: PS3 owners and contributors
-- Success condition: Separate file installation evidence from visible playback and actual audio response.
+- Success condition: Show the requested anime artwork inside the existing music player's Visual Player; do not substitute another viewer.
 
 ## Current truth
 
-**Proven:** The original creator's 14-planet ZIP passed pinned SHA-256, exact archive member, bounded zlib and QRC table checks. A local original Earth resource was added as slot 1 for one owner's setup. All 15 HDD slots and six initial browser files were read back unchanged on that console.
+**Proven:** The owner explicitly corrected the scope to the built-in PS3 visualizer. Browser-viewer source and instructions have been removed from the main branch. The earlier commit remains historical and is not the current route.
 
-**Proven negative result:** webMAN 1.47.50d responded to fixed Jupiter selection with a nonstandard `HTTP/1.1 1225 OK` status. Its body said Fixed and named the selected QRC, but an independent read of the original flash path did not match Jupiter. Selection is not claimed as rendered success.
+**Proven:** All 14 downloaded planet resources passed the pinned archive hash, exact member allowlist, bounded zlib checks and table bounds. A local original Earth resource was added as slot 1. All 15 HDD slots were independently read back unchanged on one console.
 
-**Proven:** The initial 15 host tests passed, and Node accepted the ES5 viewer's syntax. No console secrets, firmware resources, third-party artwork or local receipts are committed.
+**Proven negative result:** webMAN 1.47.50d returned `HTTP/1.1 1225 OK` for Jupiter selection. The raw response body said Fixed and named the requested resource. Reading the flash path through FTP did not match Jupiter; that read is not accepted as activation proof. Native planet rendering is not yet verified.
 
-**Unknown:** Native planet rendering, browser canvas support, music continuity while the browser viewer is open, and sustained console performance. There is no verified music-visualizer screenshot yet. The requested four-franchise female-character gallery is being expanded.
+**Proven:** Seven female-character artworks spanning Fate/stay night, One Piece, Hatsune Miku and High School DxD were downloaded, visually reviewed and fitted locally. Their source URLs and hashes are retained privately. The original browser-oriented staging does not count as native artwork installation.
+
+**Proven:** The initial 15 host tests pass, including backed-up updates and rename recovery.
+
+**Unknown:** How to display full-screen artwork through the native renderer while preserving its existing playback behavior. No native anime screenshot or audio-response result exists. There is no replacement app or browser solution in the current source tree.
 
 ## In plain language
 
-The resources are on the hard drive, but file readback alone does not mean the music background is visible. The anime prototype animates artwork using a clock; it has no access to the music player's audio signal.
+The planet files are installed on the HDD, and the artwork is ready for development. The requested native anime feature is still unfinished. A successful file upload is not the same as seeing it in the music player.
 
 ## Evidence
 
 - Planet ZIP SHA-256: `6982dcd9b2280a7c0b5a8d0ee7c1912264efd3191691297cd3dfe1f7bd9807b8`.
-- 14 creator resources independently parsed as bounded QRCF containers; each contained 374 nodes in the local inspection.
-- Hardware observations are scoped to one Evilnat 4.93 PS3 with webMAN; no other firmware combination is claimed.
-- Private deployment receipts remain outside the publication tree.
+- Each creator QRC parsed locally into 374 bounded nodes.
+- Native Gaia and Canyon resources were backed up; the existing Wave resource was read for local inspection.
+- No firmware bytes, artwork, console registry or private deployment receipts are published.
+- No native music-visualizer screenshot is available yet; ordinary XMB or external-viewer images are not substituted as proof.
 
 ## Next
 
-Complete the female-character gallery, test the browser viewer with music, and observe a native planet option on the actual console. Preserve a failed test as evidence and keep unfinished features labeled as prototypes.
+Trace the stock Wave/Canyon/Gaia resource routes and determine a supported full-screen texture path. Prototype through a reversible HDD remap, then verify the actual built-in music screen. Preserve previous failures and keep the native feature marked unfinished until that test passes.

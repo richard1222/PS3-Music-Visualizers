@@ -5,7 +5,11 @@ import argparse,hashlib,json,time,urllib.request
 ART = [
     {"file":"miku-city.jpg", "page":"https://wall.alphacoders.com/big.php?i=578968", "url":"https://images6.alphacoders.com/578/578968.jpg", "title":"Moonlit Dreamscape with Hatsune Miku"},
     {"file":"miku-cosmic.jpg", "page":"https://wall.alphacoders.com/big.php?i=651169", "url":"https://images3.alphacoders.com/651/thumb-1920-651169.jpg", "title":"Cosmic Vocaloid Dreamscape"},
-    {"file":"miku-piano.jpg", "page":"https://wall.alphacoders.com/big.php?i=736787", "url":"https://images2.alphacoders.com/736/736787.jpg", "title":"Enchanting Vocaloid Piano Night", "artist":"DMiTH"}
+    {"file":"miku-piano.jpg", "page":"https://wall.alphacoders.com/big.php?i=736787", "url":"https://images2.alphacoders.com/736/736787.jpg", "title":"Enchanting Vocaloid Piano Night", "artist":"DMiTH"},
+    {"file":"fate-saber.jpg", "page":"https://suwalls.com/anime/saber-fate-stay-night-8", "url":"https://cdn.suwalls.com/wallpapers/anime/saber-fate-stay-night-32735-3840x2160.jpg", "title":"Saber in purple twilight", "series":"Fate/stay night"},
+    {"file":"fate-rin-saber.png", "page":"https://wall.alphacoders.com/big.php?i=933827", "url":"https://images5.alphacoders.com/933/thumb-1920-933827.png", "title":"Rin and Saber in white dresses", "series":"Fate/stay night"},
+    {"file":"one-piece-nami-robin.jpg", "page":"https://wall.alphacoders.com/big.php?i=1274739", "url":"https://images6.alphacoders.com/127/1274739.jpg", "title":"Nami and Robin by the sea", "series":"One Piece", "artist":"Rachael"},
+    {"file":"dxd-heroines.jpg", "page":"https://wallpapers.com/wallpapers/koneko-toujou-the-silent-powerhouse-of-high-school-dxd-6fr4ethcqw3pobcp.html", "url":"https://wallpapers.com/images/high/koneko-toujou-the-silent-powerhouse-of-high-school-dxd-6fr4ethcqw3pobcp.jpg", "title":"High School DxD heroines", "series":"High School DxD", "source_credit":"rolierols / Wallpapers.com"}
 ]
 
 def fetch(output):
@@ -23,8 +27,11 @@ def fetch(output):
                 data.extend(chunk)
                 if len(data) > 8*1024*1024 or time.monotonic() > deadline:
                     raise ValueError("Artwork download bound")
-        if not data.startswith(b"\xff\xd8") or not data.endswith(b"\xff\xd9"):
-            raise ValueError("Not a complete JPEG: " + item["file"])
+        if item["file"].endswith(".png"):
+            valid=data.startswith(b"\x89PNG\r\n\x1a\n") and data[-8:-4]==b'IEND'
+        else:
+            valid=data.startswith(b"\xff\xd8") and data.endswith(b"\xff\xd9")
+        if not valid:raise ValueError("Unexpected image format: " + item["file"])
         (output/item["file"]).write_bytes(data)
         receipt.append({**item, "bytes":len(data), "sha256":hashlib.sha256(data).hexdigest()})
     (output/"credits.json").write_text(json.dumps(receipt, indent=2), encoding="utf-8")

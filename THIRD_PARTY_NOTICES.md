@@ -17,8 +17,8 @@ The ZIP and embedded QRC resources are not redistributed here. An owner's origin
 - [Q-Games on Gaia](https://www.q-games.com/en/2007-12-18-2/): original music visualizer.
 - [PS3 developer QRC documentation](https://www.psdevwiki.com/ps3/Qt_Resource_Container_%28QRC%29): container background.
 
-## Anime artwork
+## Anime artwork research inputs
 
-The initial local viewer uses [Moonlit Dreamscape](https://wall.alphacoders.com/big.php?i=578968), [Cosmic Vocaloid Dreamscape](https://wall.alphacoders.com/big.php?i=651169), and [Piano Night](https://wall.alphacoders.com/big.php?i=736787), with the last credited to DMiTH by the source page. Original signatures and artwork bytes are retained. Downloading a file does not transfer its copyright; check the original source and permissions before redistribution or public display.
+Downloaded pictures remain local and are not included in this repository. `tools/fetch_art.py` contains the selected source pages, URLs and known credits; it covers female characters only from the four requested franchises. `tools/fit_art.ps1` prepares complete 1280x720 image copies for development. Neither tool implements native renderer integration.
 
-`tools/fetch_art.py` records URLs, titles and hashes for locally downloaded images. The images themselves are excluded from Git and from project release artifacts. The requested Fate/stay night, One Piece and High School DxD gallery additions are not yet represented by a verified download list.
+Sources include Wallpaper Abyss/Alpha Coders, SUWalls and Wallpapers.com. DMiTH is credited for the Miku piano artwork; Rachael for the Nami/Robin artwork; rolierols / Wallpapers.com for the DxD group source. Unknown original authors are not invented. Retain original signatures and check permissions before redistributing or publicly displaying third-party artwork.

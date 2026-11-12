@@ -1,72 +1,74 @@
 ![Platform](https://img.shields.io/badge/Platform-PlayStation_3-003791)
-![Development](https://img.shields.io/badge/Development-0.1.0_prototype-orange)
+![Target](https://img.shields.io/badge/Target-Built--in_Visual_Player-blue)
+![Development](https://img.shields.io/badge/Development-Native_integration-orange)
 ![License](https://img.shields.io/badge/Code-MIT-blue)
-![Credit](https://img.shields.io/badge/Credit-Richard1222_%2F_Saber-brightgreen)
 
 # Saber PS3 Music Visualizers
 
-Planet visualizer setup and an experimental anime artwork viewer for a PS3 with webMAN MOD. **Credit to Richard1222 / Saber.**
+Custom resources for the **built-in PS3 music player's Visual Player**. Credit to **Richard1222 / Saber**.
 
-The planet options use the PS3's native Gaia/Earth visualizer. The anime viewer is a separate ES5 browser prototype with full-screen artwork and timed particles. **It does not capture XMB audio, respond to beats, or replace a native visualizer plugin.** Music continuity and browser behavior must be checked on hardware before calling that workflow working.
+The goal is full-screen female-character artwork from **Fate/stay night, One Piece, Hatsune Miku and High School DxD**, plus planet options, inside the existing PS3 renderer. **This is not a separate browser viewer or music application. Native full-screen anime integration is not working yet.**
 
-Project structure, status reporting, backups and validation take their reference from [Saber PSN Unlock Tool](https://github.com/richard1222/PS3-Trophy-Unlocker-2026). This project does not access trophies or reuse its award workflows.
+The project's branding, documentation and verification style reference [Saber PSN Unlock Tool](https://github.com/richard1222/PS3-Trophy-Unlocker-2026). This project does not access trophies.
 
 ## Current development
 
-Version 0.1.0 is source development, not a finished PKG release. Read [current status](docs/STATUS.md).
+See [current status](docs/STATUS.md) and [native integration research](docs/NATIVE_INTEGRATION.md).
 
-| Component | Current evidence | Limit |
+| Workstream | Evidence | Limit |
 | --- | --- | --- |
-| Creator's planet pack | 14 QRC files downloaded and checked; one optional original Earth slot | Artwork and firmware resources are not distributed here |
-| HDD installation | 15 planet slots and initial three-image web viewer independently read back on one owner's console | Broad firmware compatibility is untested |
-| Planet selection | webMAN accepted a fixed Jupiter command with a malformed HTTP status line | Native rendering is not yet confirmed |
-| Anime viewer | ES5 source and online artwork download tool | Timed animation; no audio analysis; hardware test pending |
-| Requested gallery | Female characters from Fate/stay night, One Piece, Hatsune Miku and High School DxD | Gallery expansion is in progress |
+| Planet pack | 14 creator QRCs validated; 15 HDD slots including the owner's original Earth independently read back | Native rendering is not yet confirmed |
+| Planet selection | webMAN reports Fixed for Jupiter | Nonstandard HTTP status and an inconclusive flash-path mapping readback remain recorded |
+| Anime artwork | Seven female-character images from all four requested series downloaded, visually reviewed and fitted locally | Artwork preparation is not native integration |
+| Native anime integration | Existing Gaia, Canyon and Wave resources are under inspection | Full-screen rendering in the built-in player remains unimplemented |
+| Host checks | 15 tests pass | Tests do not establish console rendering or music playback |
 
-## Features
+## Scope correction
 
-- QRC size, compression and table-bound checks before upload.
-- Creator archive pinned by SHA-256 and an explicit file allowlist.
-- HDD-only installer with dry run by default, staging readbacks and preservation of existing different files.
-- Updates require a previous receipt matching the existing file and preserve its backup.
-- Separate native planet resources and browser artwork; no theme replacement.
-- Download credits kept beside local artwork. Third-party images are excluded from Git.
+The initial commit included an ES5 browser-viewer prototype. The owner clarified that the artwork must fit the **built-in PS3 visualizer**, so that source and its setup instructions have been removed from the current branch. The history is preserved; it is not the current implementation or installation route.
 
-## Quick start
+## Quick start: native planet resources
 
-Use Python 3.12 or later. Obtain the planet ZIP from [DeViL303's original post](https://www.psx-place.com/threads/research-modifying-the-gaia-visualization-custom_render_plugin-earth-qrc.27756/page-33). Its inspected SHA-256 is recorded in `tools/prepare_planets.py`.
+Python 3.12 or later and webMAN MOD are required. Obtain the planet ZIP from [DeViL303's creator post](https://www.psx-place.com/threads/research-modifying-the-gaia-visualization-custom_render_plugin-earth-qrc.27756/page-33). The inspected archive SHA-256 is pinned in the preparation tool.
 
 ```text
 python tools/prepare_planets.py downloads/planets.zip local/planets
-python tools/fetch_art.py source/art
-python tools/install_hdd.py --planets local/planets --web source
+python tools/install_hdd.py --planets local/planets
 ```
 
-The last command prints a plan without using the network. To install, add `--host YOUR_PS3_LAN_IP --apply --receipt receipts/install.json`. Use your own console address. The PS3 must be on XMB with webMAN FTP available.
+The second command prints a plan without network access. To install, add `--host YOUR_PS3_LAN_IP --apply --receipt receipts/install.json`. Use your own console address and remain on XMB. Files go only into the HDD resource slots; the tool does not overwrite firmware, change the theme or touch trophies.
 
-`--original path/to/your/earth.qrc` adds an original-Earth slot when preparing the planet pack. Slot numbers then shift by one; consult the generated manifest before selecting a slot. `--activate N` requests a fixed webMAN Earth resource, then attempts a separate mapping readback. A failed mapping check is reported rather than silently treated as rendering success.
+Optionally supply `--original path/to/your/earth.qrc` when preparing resources. It adds a first slot for the original Earth, shifting the downloaded planet slot numbers. Consult the generated manifest. `--activate N` requests a fixed webMAN selection; an HTTP response alone is not treated as proof of rendered output.
 
-Open `http://YOUR_PS3_LAN_IP/dev_hdd0/PS3-Music-Visualizers/index.html` in the PS3 browser to test the anime prototype. Choose artwork and hide the controls. The native music player's Visual Player backgrounds and this browser viewer are separate modes. [Sony's music control-panel guide](https://manuals.playstation.net/document/en/ps3/current/music/panel.html) documents the native player.
+For updates, `--previous-receipt receipts/previous.json` permits replacement only when the existing file matches that prior receipt, with a preserved backup. Existing different files are otherwise refused.
+
+## Artwork preparation for development
+
+```text
+python tools/fetch_art.py local/art-original
+```
+
+On Windows, `tools/fit_art.ps1 -InputFolder FULL_INPUT_PATH -OutputFolder FULL_NEW_OUTPUT_PATH` creates 1280x720 copies while retaining the complete image and source credits. These tools prepare research inputs. **They do not inject artwork into the native visualizer.** Downloaded artwork is excluded from Git.
 
 ## Validation
 
 ```text
 python -m unittest discover -s tests -v
-node --check source/visualizer.js
 ```
 
-The initial 15 host tests cover malformed resources, path escapes, changed files and failed staging. Host tests do not establish sound playback, frame rate or console rendering. GitHub Actions runs source checks without accessing a PS3.
+Tests cover malformed resources, table bounds, path escapes, changed files, failed staging, backed-up updates and rename recovery. GitHub Actions runs host checks without connecting to a PS3.
 
-## Repository layout
+## Layout
 
 ```text
-source/      ES5 browser viewer; local artwork is ignored
-tools/       QRC inspection, pack preparation, downloads and HDD installation
-tests/       Synthetic resource and transport regression checks
-docs/        Status, provenance and next steps
+tools/       Native resource inspection, preparation and HDD installation
+tests/       Synthetic resource and transport checks
+docs/        Current truth, sources and native integration research
 .github/     Source-only checks
 ```
 
 ## Credits and license
 
-Original project code: Richard1222 / Saber, [MIT](LICENSE). Planet pack: DeViL303; planet texture source: [Solar System Scope](https://www.solarsystemscope.com/textures/). webMAN MOD: aldostools and contributors. Anime images retain their original creators' rights; see [notices and sources](THIRD_PARTY_NOTICES.md). No third-party artwork or Sony firmware resources are licensed by this repository's MIT license.
+Original project code: Richard1222 / Saber, [MIT](LICENSE). Planet pack: DeViL303; texture source: [Solar System Scope](https://www.solarsystemscope.com/textures/). Integration: webMAN MOD by aldostools and contributors. See [third-party notices](THIRD_PARTY_NOTICES.md).
+
+Sony firmware, downloaded planet resources and third-party anime artwork are not included or relicensed by this repository. The planet pack contains individual globe replacements, not a simultaneous solar-system simulation.
