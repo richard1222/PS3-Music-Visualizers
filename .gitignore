@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+local/
+downloads/
+backups/
+receipts/
+source/art/
+*.qrc
+*.pkg
+*.sprx
+*.sys
+*.zip
+.env
