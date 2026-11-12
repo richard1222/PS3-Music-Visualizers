@@ -8,9 +8,11 @@
 
 **Proven:** The owner's `override/music_1/BACKGROUND.mnu` contains `COLOUR SHADER:int:1`. Offline inspection of the three background fragment programs found four texture reads in variant 0, none in variant 1 and none in variant 2.
 
-**Inference:** If the selector binds the corresponding numbered variant as expected, replacing monthly background images alone will not display them through the configured music background. The complete selector-to-draw binding has not yet been independently established.
+**Proven, static:** A subsequent local trace established the selector calculation: the renderer loads its selector, multiplies it by four and addresses the shader pointer at `renderer + 0x14 + 4 * selector`. Initialization stores variants 0, 1 and 2 at offsets `0x14`, `0x18` and `0x1c`. Thus value 1 addresses variant 1. This is a static binding result; no runtime draw was observed in this study.
 
-**Proven:** A bundled copy fragment program contains one texture read, from sampler 0 using input texture coordinates. This makes it a concrete lead for investigating a flat image, but does not establish which texture is bound, which screen pass uses it or whether it can be selected for music.
+**Inference:** Replacing monthly background images alone will not display them through the configured music background, because the selected fragment program contains no texture reads. A new image binding and sampling path is required.
+
+**Proven, static:** The copy fragment program contains one texture read, from sampler 0 using input texture coordinates. It is stored separately at renderer offset `0x20`. Its copy helper receives internal texture slots `0x2c` and `0x30` at the two direct call sites inspected. The surrounding background passes set 64×32 viewports. This is an internal transition path, not an established loader for external artwork.
 
 **Unknown:** A supported native route to display detailed artwork full-screen and react to audio. No renderer change or hardware test was performed here.
 
@@ -44,6 +46,25 @@ The owner approved the smiling Miku picture. A local one-tile Gaia candidate now
 
 This is one quarter-image tile in a globe texture allocation, not an implementation of full-screen artwork. It has not been uploaded or selected. It preserves a controlled texture test while the flat-image route is investigated.
 
+## Selector and copy-pass trace
+
+| Finding | Local module virtual address |
+| --- | --- |
+| Selector setter writes renderer field `0x1c8` | `0x4fdf0` |
+| Read selector | `0x52ae8` |
+| Multiply selector by four | `0x52af4` |
+| Add shader-array offset `0x14` | `0x52b40` |
+| Copy helper uses separate shader slot `0x20` | `0x526bc` |
+| Pass internal texture slot `0x2c` to copy helper | `0x5294c` |
+| Pass internal texture slot `0x30` to copy helper | `0x53164` |
+| Background viewport setup receives width 64, height 32 | `0x52820`, `0x52fbc` |
+
+These addresses identify observations in the owner's private module; they are not portable patches. The receipt is tied to the private ELF hash. Firmware bytes, instruction listings and private receipts remain unpublished.
+
+**Inference:** Setting `COLOUR SHADER` to 3 would index the separate copy object rather than a fourth ordinary background variant. The normal background update addresses parameter members through offset `0x114`, whereas the copy object is constructed as a different, smaller wrapper. This is not a verified compatible layout, and no selector-3 prototype is prepared or activated.
+
+**Unknown:** Whether indirect callers supply other copy sources. The two direct call sites do not prove an exhaustive runtime call graph.
+
 ## Next
 
-Trace the background selector and copy pass through their texture bindings and draw calls. Keep shared XMB background resources unchanged while determining whether a music-only path exists. Continue to distinguish timed movement from audio response.
+The selector and two direct copy sources are now traced statically. Next, identify a music-only image allocation/binding hook and its lifetime, with an independent rollback path, before preparing a native modification. The existing copy routine alone does not load the approved picture. Keep shared XMB background resources unchanged and continue to distinguish timed movement from audio response.
