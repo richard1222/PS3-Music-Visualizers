@@ -3,6 +3,8 @@ from pathlib import Path
 import argparse,hashlib,json,time,urllib.request
 
 ART = [
+    {"file":"one-piece-heroines.jpg", "page":"https://j-books.shueisha.co.jp/books/onepiece_novelheroines.html", "url":"https://j-books.shueisha.co.jp/icon/onepiece_novelheroines_news.jpg", "title":"One Piece HEROINES: Nami, Robin, Vivi and Perona", "series":"One Piece", "source_credit":"Shueisha publisher illustration"},
+    {"file":"dxd-xenovia-irina-rossweisse.jpg", "page":"https://www.pinterest.com/pin/high-school-dxd-new-born-hero--796714990302842223/", "url":"https://i.pinimg.com/736x/1d/2e/37/1d2e37bbb959857772a33117d6e2b8b4.jpg", "title":"Xenovia, Irina and Rossweisse in uniforms", "series":"High School DxD"},
     {"file":"miku-spring-smile.jpg", "page":"https://wall.alphacoders.com/big.php?i=736713", "url":"https://images.alphacoders.com/736/thumb-1920-736713.jpg", "title":"Miku smiling among cherry blossoms", "series":"Hatsune Miku"},
     {"file":"miku-city.jpg", "page":"https://wall.alphacoders.com/big.php?i=578968", "url":"https://images6.alphacoders.com/578/578968.jpg", "title":"Moonlit Dreamscape with Hatsune Miku"},
     {"file":"miku-cosmic.jpg", "page":"https://wall.alphacoders.com/big.php?i=651169", "url":"https://images3.alphacoders.com/651/thumb-1920-651169.jpg", "title":"Cosmic Vocaloid Dreamscape"},

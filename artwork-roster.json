@@ -1,0 +1,303 @@
+{
+  "requested_scope": "Female cast across the requested series; the roster is being expanded, not limited to primary heroines",
+  "coverage_complete": false,
+  "all_artwork_ready": false,
+  "native_rotation_verified": false,
+  "tracked_characters": 45,
+  "series": {
+    "fate-stay-night": {
+      "title": "Fate/stay night",
+      "source": "https://www.fatestaynightusa.com/ubw/sp/chara/",
+      "characters": [
+        {
+          "name": "Saber (Artoria Pendragon)",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "fate-rin-saber.png",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Rin Tohsaka",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "fate-rin-saber.png",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Sakura Matou",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Illyasviel von Einzbern",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Rider (Medusa)",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Caster (Medea)",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Taiga Fujimura",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Ayako Mitsuzuri",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Sella",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Leysritt",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Kane Himuro",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Kaede Makidera",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Yukika Saegusa",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        }
+      ]
+    },
+    "one-piece": {
+      "title": "One Piece",
+      "source": "https://onepiece.fandom.com/wiki/Category:Female_Characters",
+      "characters": [
+        {
+          "name": "Nami",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "one-piece-heroines.jpg",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Nico Robin",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "one-piece-heroines.jpg",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Nefertari Vivi",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "one-piece-heroines.jpg",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Perona",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "one-piece-heroines.jpg",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Boa Hancock",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Tashigi",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Vinsmoke Reiju",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Uta",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Koala",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Carrot",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Shirahoshi",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Rebecca",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Viola",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Charlotte Pudding",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Hina",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Makino",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        }
+      ]
+    },
+    "high-school-dxd": {
+      "title": "High School DxD",
+      "source": "https://dxd.fandom.com/wiki/Characters",
+      "characters": [
+        {
+          "name": "Rias Gremory",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "dxd-heroines.jpg",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Akeno Himejima",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "dxd-heroines.jpg",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Asia Argento",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "dxd-heroines.jpg",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Koneko Toujou",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "dxd-heroines.jpg",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Xenovia Quarta",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "dxd-xenovia-irina-rossweisse.jpg",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Irina Shidou",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "dxd-xenovia-irina-rossweisse.jpg",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Rossweisse",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "dxd-xenovia-irina-rossweisse.jpg",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Ravel Phenex",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Sona Sitri",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Tsubaki Shinra",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Serafall Leviathan",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Kuroka",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        }
+      ]
+    },
+    "piapro": {
+      "title": "Hatsune Miku / Piapro female virtual singers",
+      "source": "https://pjsekai.sega.jp/colorfullive/2nd-will/index.html",
+      "characters": [
+        {
+          "name": "Hatsune Miku",
+          "artwork_status": "reviewed-local-group-or-solo",
+          "local_artwork_filename": "miku-spring-smile.jpg",
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Kagamine Rin",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "Megurine Luka",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        },
+        {
+          "name": "MEIKO",
+          "artwork_status": "pending",
+          "local_artwork_filename": null,
+          "native_rendering_verified": false
+        }
+      ]
+    }
+  }
+}

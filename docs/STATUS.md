@@ -12,11 +12,15 @@
 
 **Proven negative result:** webMAN 1.47.50d returned `HTTP/1.1 1225 OK` for Jupiter selection. The raw response body said Fixed and named the requested resource. Reading the flash path through FTP did not match Jupiter; that read is not accepted as activation proof. A later screenshot directly showed Jupiter inside native Gaia; the earlier mapping read remains inconclusive.
 
-**Proven:** Eight female-character artworks spanning Fate/stay night, One Piece, Hatsune Miku and High School DxD were downloaded, visually reviewed and fitted locally. Four [primary selections](ART_SELECTION.md) now follow the owner's artwork preference. Their source URLs and hashes are retained privately. The original browser-oriented staging does not count as native artwork installation.
+**Proven:** Ten female-character artworks spanning Fate/stay night, One Piece, Hatsune Miku and High School DxD were downloaded, visually reviewed and fitted locally. The [artwork collection](ART_SELECTION.md) now includes additional cast members beyond the original four sample selections. Source URLs and hashes are retained privately. Artwork preparation and earlier browser-oriented staging do not count as native installation.
 
 **Proven:** Read-only module inspection found static reference sequences for Wave's monthly background paths and Canyon's normal map. The [binding study](NATIVE_BINDING_STUDY.md) records the addresses and limits; a flat HD artwork route remains unverified.
 
-**Proven:** 40 host tests pass, including backed-up updates, rename recovery, offline QRC editing, fixed-size JPEG constraints, read-only fragment inspection and rejection of automatic selection before network access.
+**Proven:** 47 host tests pass, including backed-up updates, rename recovery, offline QRC editing, fixed-size JPEG constraints, read-only fragment inspection, native UI probe preservation and rejection of automatic selection before network access.
+
+**Proven:** The [native UI probe](NATIVE_UI_PROBE.md) now contains the approved Miku image and a finite timed zoom/fade definition. Independent extraction preserves the intended animation references, original UI structure and original asset bytes after a bounded local payload repair. It has not been deployed; visibility and animation on the PS3 are unverified.
+
+**Proven:** The artwork scope has expanded to the female cast across the requested series. Ten reviewed images cover 14 distinct characters locally; [45 characters are tracked](../artwork-roster.json). Complete roster coverage, remaining artwork acquisition and native character rotation are unfinished.
 
 **Proven:** The owner approved the smiling Miku picture. The [background sampling study](BACKGROUND_SAMPLING.md) found no texture reads in background shader variant 1, the number recorded in the music preset. The selector formula is now statically confirmed. The copy pass uses separate internal textures; an external artwork binding and runtime behavior remain unverified.
 
