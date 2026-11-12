@@ -2,7 +2,7 @@
   "requested_scope": "Only the seven owner-selected characters: Rin, Saber, Nami, Robin, Miku, Rias and Akeno",
   "coverage_complete": true,
   "all_artwork_ready": true,
-  "native_rotation_verified": false,
+  "native_rotation_verified": true,
   "tracked_characters": 7,
   "series": {
     "fate-stay-night": {
@@ -13,13 +13,13 @@
           "name": "Saber (Artoria Pendragon)",
           "artwork_status": "reviewed-local-group-or-solo",
           "local_artwork_filename": "fate-rin-saber.png",
-          "native_rendering_verified": false
+          "native_rendering_verified": true
         },
         {
           "name": "Rin Tohsaka",
           "artwork_status": "reviewed-local-group-or-solo",
           "local_artwork_filename": "fate-rin-saber.png",
-          "native_rendering_verified": false
+          "native_rendering_verified": true
         }
       ]
     },
@@ -30,14 +30,14 @@
         {
           "name": "Nami",
           "artwork_status": "reviewed-local-group-or-solo",
-          "local_artwork_filename": "one-piece-heroines.jpg",
-          "native_rendering_verified": false
+          "local_artwork_filename": "one-piece-nami-robin.jpg",
+          "native_rendering_verified": true
         },
         {
           "name": "Nico Robin",
           "artwork_status": "reviewed-local-group-or-solo",
-          "local_artwork_filename": "one-piece-heroines.jpg",
-          "native_rendering_verified": false
+          "local_artwork_filename": "one-piece-nami-robin.jpg",
+          "native_rendering_verified": true
         }
       ]
     },
@@ -49,13 +49,13 @@
           "name": "Rias Gremory",
           "artwork_status": "reviewed-local-group-or-solo",
           "local_artwork_filename": "dxd-rias-akeno.jpg",
-          "native_rendering_verified": false
+          "native_rendering_verified": true
         },
         {
           "name": "Akeno Himejima",
           "artwork_status": "reviewed-local-group-or-solo",
           "local_artwork_filename": "dxd-rias-akeno.jpg",
-          "native_rendering_verified": false
+          "native_rendering_verified": true
         }
       ]
     },
@@ -67,9 +67,27 @@
           "name": "Hatsune Miku",
           "artwork_status": "reviewed-local-group-or-solo",
           "local_artwork_filename": "miku-spring-smile.jpg",
-          "native_rendering_verified": false
+          "native_rendering_verified": true
         }
       ]
     }
+  },
+  "native_rotation_limits": {
+    "method": "native UI timed fades over the existing visualizer",
+    "sequence_seconds": 320,
+    "continuous_loop_verified": false,
+    "artwork_audio_response_verified": false,
+    "artwork_texture_pixels": [
+      256,
+      144
+    ],
+    "picture_plane_pixels": [
+      1824,
+      1026
+    ],
+    "tested_output_pixels": [
+      1920,
+      1080
+    ]
   }
 }

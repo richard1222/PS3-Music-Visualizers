@@ -7,7 +7,7 @@
 
 Custom resources for the **built-in PS3 music player's Visual Player**. Credit to **Richard1222 / Saber**.
 
-The goal is full-screen female-character artwork from **Fate/stay night, One Piece, Hatsune Miku and High School DxD**, plus planet options, inside the existing PS3 music player. **Static Miku artwork now renders inside its native full-screen UI, with the native control panel working. Animation, beat response and character rotation remain unfinished.** See the [hardware result](docs/NATIVE_MIKU_SUCCESS.md).
+The goal is full-screen female-character artwork from **Fate/stay night, One Piece, Hatsune Miku and High School DxD**, plus planet options, inside the existing PS3 music player. **Four pictures covering the selected seven girls now display and transition over native Wave visuals.** Framing preserves the full pictures. The current timed sequence lasts 320 seconds; continuous looping, higher image quality and artwork beat response remain unfinished. See the [gallery hardware result](docs/NATIVE_GALLERY_RESULT.md).
 
 The project's branding, documentation and verification style reference [Saber PSN Unlock Tool](https://github.com/richard1222/PS3-Trophy-Unlocker-2026). This project does not access trophies.
 
@@ -20,9 +20,9 @@ See [current status](docs/STATUS.md) and [native integration research](docs/NATI
 | Planet pack | 14 creator QRCs validated; 15 HDD slots including the owner's original Earth independently read back; Jupiter observed in native Gaia | Other planets have not each been observed |
 | Resource selection | Original Earth selection accepted after recovery from an anime-test freeze | Automatic selection is disabled; an XMB status string cannot establish that the renderer is unloaded |
 | Anime artwork | Four reviewed images covering exactly Rin, Saber, Nami, Robin, Miku, Rias and Akeno | Selected artwork is ready; native rotation remains unfinished |
-| Native anime integration | Static Miku artwork observed on two native music-player opens; owner confirmed it; native control panel opened and closed over it | One image at 512×288 source resolution; long-session stability, animation, beat response and character rotation remain unverified |
+| Native anime integration | All four selected pictures observed in native music playback; owner confirmed every picture; corrected framing accepted | Four 256×144 textures; finite 320-second timed fades; long-session stability, continuous looping and artwork beat response unverified |
 | Previous failures | Broad Gaia prototype froze; the first soundvisualizer UI page showed no artwork; a subsequent reload was followed by owner-reported recovery mode | Failures remain documented. Successful audio-player test used unloaded-module checks and no XMB reload. See [hardware result](docs/NATIVE_MIKU_SUCCESS.md) |
-| Host checks | 51 tests pass | Tests do not establish console rendering or music playback |
+| Host checks | 56 tests pass | Tests do not establish console rendering or music playback |
 
 ## Scope correction
 

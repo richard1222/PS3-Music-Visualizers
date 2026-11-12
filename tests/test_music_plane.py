@@ -56,6 +56,14 @@ class MusicPlaneTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'empty music page'):add_probe(ET.tostring(root),'art.gim',target='audioplayer')
     def test_unknown_profile_refused(self):
         with self.assertRaisesRegex(ValueError,'Unknown'):add_probe(audio_fixture(),'art.gim',target='other')
+    def test_new_artwork_does_not_inherit_stock_layout_size_overrides(self):
+        source=audio_fixture().replace('name="back_screen_plane"','name="back_screen_plane" unknownInt20="0x64f" unknownInt21="0x650"')
+        out=ET.fromstring(add_probe(source,'art.gim',target='audioplayer'))
+        new=next(n for n in out.iter('Plane') if n.get('name')==PLANE_NAME)
+        old=next(n for n in out.iter('Plane') if n.get('name')=='back_screen_plane')
+        self.assertEqual((new.get('width'),new.get('height')),('1824','1026'))
+        self.assertEqual((new.get('unknownInt20'),new.get('unknownInt21')),('0x0','0x0'))
+        self.assertEqual((old.get('unknownInt20'),old.get('unknownInt21')),('0x64f','0x650'))
     def test_cli_formats_appended_image_for_compiler(self):
         with tempfile.TemporaryDirectory() as temp:
             folder=Path(temp);(folder/'input.xml').write_text(fixture())

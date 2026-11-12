@@ -45,9 +45,13 @@ def add_probe(xml,image_path,motion=False,target='soundvisualizer'):
     if len(templates)!=1:raise ValueError('Expected one native plane template')
     plane=copy.deepcopy(templates[0])
     for child in list(plane):plane.remove(child)
-    plane.attrib.update(name=PLANE_NAME,posX='0',posY='0',objectScale='1',
+    plane.attrib.update(name=PLANE_NAME,posX='0',posY='0',objectScale='0',
                         redScale='1',greenScale='1',blueScale='1',alphaScale='0.75',
-                        width='960',height='540',image='image:'+IMAGE_NAME,onLoad='nothing')
+                        width='1824',height='1026',image='image:'+IMAGE_NAME,onLoad='nothing')
+    # Older Rcomage names these native position/size layout overrides as
+    # unknown fields. Never inherit the template's grid-controlled sizing.
+    for key in ('unknown17','unknown18','unknown19','unknownInt20','unknownInt21','unknown22'):
+        if key in plane.attrib:plane.set(key,'0x0')
     ET.SubElement(images,'Image',name=IMAGE_NAME,src=str(image_path),format='gim',compression='zlib',unknownByte='0')
     pages[0].append(plane)
     if motion:

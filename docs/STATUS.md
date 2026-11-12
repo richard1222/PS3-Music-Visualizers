@@ -6,6 +6,8 @@
 
 ## Current truth
 
+**Latest result:** The [seven-character gallery](NATIVE_GALLERY_RESULT.md) displays all four selected pictures with timed native fades and visible Wave effects. The owner confirmed every picture appeared and accepted the corrected near-full-screen fit. Each picture retains its full composition and proportions. The 320-second sequence uses four low-resolution textures; continuous looping, higher image quality and artwork beat response remain unfinished. Host suite: 56 passing tests. Older results below remain historical evidence.
+
 **Latest proven hardware result:** Static Miku artwork now renders inside the existing music player's full-screen UI. It appeared on two opens, the owner confirmed seeing it, and the native control panel opened and closed over the picture. The successful test used an independently verified HDD mapping while the audio-player module was unloaded, with no XMB reload. See the [hardware result](NATIVE_MIKU_SUCCESS.md). Animation, beat response, seven-character rotation and reboot persistence remain unfinished. Earlier negative results below are preserved as history.
 
 **Proven:** The owner explicitly corrected the scope to the built-in PS3 visualizer. Browser-viewer source and instructions have been removed from the main branch. The earlier commit remains historical and is not the current route.
