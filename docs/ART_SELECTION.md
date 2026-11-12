@@ -1,20 +1,14 @@
-# Selected artwork direction
+# Selected seven characters
 
-The requested target is the female cast across all requested series. [The tracked roster](../artwork-roster.json) currently contains 45 characters and explicitly marks coverage incomplete. Reviewed local artwork covers 14 distinct characters so far. This is a growing collection; the original four pictures are sample inputs rather than the entire requested set.
+The owner selected exactly **Rin, Saber, Nami, Robin, Hatsune Miku, Rias and Akeno**. The active [roster](../artwork-roster.json) contains only these seven characters.
 
-The owner requested cute, attractive female-character artwork. The primary selection is:
-
-| Series | Selection | Source |
+| Characters | Active artwork | Source |
 | --- | --- | --- |
-| Fate/stay night | Rin and Saber in white dresses | [Wallpaper Abyss](https://wall.alphacoders.com/big.php?i=933827) |
-| One Piece | Nami and Robin by the sea, artwork credited to Rachael | [Wallpaper Abyss](https://wall.alphacoders.com/big.php?i=1274739) |
-| Hatsune Miku | Bright smiling Miku among cherry blossoms | [Wallpaper Abyss](https://wall.alphacoders.com/big.php?i=736713) |
-| High School DxD | Rias, Akeno, Asia and Koneko group portrait | [Wallpapers.com](https://wallpapers.com/wallpapers/koneko-toujou-the-silent-powerhouse-of-high-school-dxd-6fr4ethcqw3pobcp.html) |
+| Rin and Saber | White dresses | [Wallpaper Abyss](https://wall.alphacoders.com/big.php?i=933827) |
+| Nami and Robin | Seaside portrait | [Wallpaper Abyss](https://wall.alphacoders.com/big.php?i=1274739) |
+| Hatsune Miku | Approved smiling cherry-blossom picture | [Wallpaper Abyss](https://wall.alphacoders.com/big.php?i=736713) |
+| Rias and Akeno | Two-character uniform portrait | [Source](https://www.pinterest.com/pin/675258537869613029/) |
 
-These four were visually reviewed locally. The fitted copies preserve the complete source image with padding where needed. The darker Miku scenes remain alternate artwork inputs.
+All four active images were visually reviewed and fitted while retaining the complete picture. The default artwork downloader contains only this set. Earlier group images with additional characters are inactive research inputs.
 
-The owner explicitly approved the smiling cherry-blossom Miku picture on November 12, 2026. Keep that selection while native renderer integration continues.
-
-Additional reviewed artwork includes [Nami, Robin, Vivi and Perona from the HEROINES publisher illustration](https://j-books.shueisha.co.jp/books/onepiece_novelheroines.html), and [Xenovia, Irina and Rossweisse in uniforms](https://www.pinterest.com/pin/high-school-dxd-new-born-hero--796714990302842223/). The requested artwork movement and visualizer behavior are being developed through a [native UI probe](NATIVE_UI_PROBE.md).
-
-Source credits and hashes accompany the private files. Artwork is not included in this public repository. Selection and fitting do not establish rendering in the built-in music visualizer.
+Source credits and hashes accompany the private files. Artwork is excluded from the public repository. The [native motion prototype](NATIVE_UI_PROBE.md) remains local; console rendering, character rotation and audio response are unverified.

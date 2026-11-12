@@ -52,4 +52,4 @@ Native animation format reference: [PS3 RCOXML animations](https://www.psdevwiki
 
 ## Next
 
-Trace the sound visualizer's page lifecycle and establish a reversible test method before hardware use. Verify static visibility before movement, then page closure and existing controls. Connect audio-driven changes only after their data source and update lifetime are established. Continue expanding the female-cast artwork roster; the one-image probe is a controlled integration input.
+Trace the sound visualizer's page lifecycle and establish a reversible test method before hardware use. Verify static visibility before movement, then page closure and existing controls. Connect audio-driven changes only after their data source and update lifetime are established. Use only the selected seven characters for later artwork rotation; the one-image probe is a controlled integration input.

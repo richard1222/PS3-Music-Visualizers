@@ -19,7 +19,7 @@ See [current status](docs/STATUS.md) and [native integration research](docs/NATI
 | --- | --- | --- |
 | Planet pack | 14 creator QRCs validated; 15 HDD slots including the owner's original Earth independently read back; Jupiter observed in native Gaia | Other planets have not each been observed |
 | Resource selection | Original Earth selection accepted after recovery from an anime-test freeze | Automatic selection is disabled; an XMB status string cannot establish that the renderer is unloaded |
-| Anime artwork | Ten reviewed images; 14 characters covered locally; 45 characters tracked toward the requested female cast | Full cast coverage and native rotation remain unfinished |
+| Anime artwork | Four reviewed images covering exactly Rin, Saber, Nami, Robin, Miku, Rias and Akeno | Selected artwork is ready; native rotation remains unfinished |
 | Native anime integration | A local artwork/camera prototype was followed by a console freeze | Failed experiment; no native anime success or audio response established |
 | Native UI motion probe | Local image plane with a finite 24-second zoom/fade definition; independent resource extraction passes | Console visibility, movement and audio response remain unverified |
 | Host checks | 47 tests pass | Tests do not establish console rendering or music playback |
