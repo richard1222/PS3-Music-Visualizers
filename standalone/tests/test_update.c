@@ -19,7 +19,8 @@ int main(void) {
     CHECK(update_parse_version("a.b",&major,&minor)!=0);
     CHECK(update_parse_version("",&major,&minor)!=0);
     CHECK(update_parse_version("1.00x",&major,&minor)!=0);
-    CHECK(update_is_newer("1.06")==1);
+    CHECK(update_is_newer("1.07")==1);
+    CHECK(update_is_newer("1.06")==0);
     CHECK(update_is_newer("1.05")==0);
     CHECK(update_is_newer("1.03")==0);
     CHECK(update_is_newer("1.02")==0);
@@ -59,6 +60,14 @@ int main(void) {
     remove("test_update_abc.bin");
     remove("test_update_56.bin");
     remove("test_update_1m.bin");
+    {
+        char avail[16];
+        memset(avail,'x',sizeof(avail));
+        CHECK(update_check_available(NULL,avail,sizeof(avail))==-1);
+        CHECK(update_check_available("/nonexistent/",avail,sizeof(avail))==-1);
+        CHECK(avail[0]==0);
+        CHECK(update_check_available(NULL,NULL,0)==-1);
+    }
     if(fails) { printf("Update tests: %d failures\n",fails); return 1; }
     printf("Update: version compare, manifest parsing and SHA-256 checks passed\n");
     return 0;

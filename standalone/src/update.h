@@ -1,7 +1,7 @@
 #ifndef NL_UPDATE_H
 #define NL_UPDATE_H
 #include <stddef.h>
-#define NL_VERSION "1.05"
+#define NL_VERSION "1.06"
 #define NL_UPDATE_URL "https://raw.githubusercontent.com/richard1222/PS3-Music-Visualizers/main/standalone/update.json"
 #define NL_UPDATE_MAX_PKG (64*1024*1024)
 #define NL_PACKAGES_DIR "/dev_hdd0/packages/"
@@ -19,4 +19,9 @@ int update_sha256_file(const char *path,char *hex_out);
 int update_net_init(void);
 void update_net_shutdown(void);
 int update_check_and_install(const char *assets_dir,char *msg,size_t msg_size);
+/* Check-only availability probe: fetches and parses the manifest but
+ * downloads nothing. Returns 1 when a newer version is available
+ * (version_out receives the manifest version), 0 when up to date,
+ * and -1 when the check cannot run or the manifest is unusable. */
+int update_check_available(const char *assets_dir,char *version_out,size_t version_size);
 #endif

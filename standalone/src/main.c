@@ -192,6 +192,9 @@ int main(int argc,char **argv) {
     int art_view=0,art_selection=0,art_count=0,art_sel=0,art_source=0,art_browse_view=0;
     int settings_selection=0,update_pending=0;
     char upd_msg[160];
+    char update_notice[48]="";
+    int auto_update_checked=0;
+    Uint32 boot_ticks=0;
     unsigned previous=0; Uint32 repeat_at=0; float smooth[SV_BANDS]={0};
     Gallery gallery; FrameHealth health={0};
     SpectrumPlan spectrum_plan={0};
@@ -204,8 +207,10 @@ int main(int argc,char **argv) {
     NL_TRACE("before-sdl-init");
     if(SDL_Init(display_init_flags()|SDL_INIT_AUDIO|SDL_INIT_TIMER)) return 1;
     if(runtime_init()) { SDL_Quit(); return 4; }
-    /* Network failure must never block offline use; the update check
-     * reports it only when the user asks for an update. */
+    /* Network failure must never block offline use. A one-shot
+     * availability check runs shortly after startup and stays silent
+     * when the network or manifest is unreachable; the full update
+     * check still runs only when the user asks for it. */
     update_net_init();
 #ifdef NL_DIAGNOSTIC
     if(argc>1 && !strcmp(argv[1],"--test-stalled-flip")) runtime_diagnostic_stall_flip(0);
@@ -249,6 +254,7 @@ int main(int argc,char **argv) {
     }
 #endif
     if(safety_start()) { stop_music(); return 7; }
+    boot_ticks=SDL_GetTicks();
     while(running) {
         int update_ran=0;
         safety_beat();
@@ -432,6 +438,7 @@ int main(int argc,char **argv) {
                 ui_text(screen,36,124+i*72,26,0xf2f7ff,nav[i]);
             }
             ui_text(screen,270,30,42,0xf2f7ff,nav[section]);
+            if(update_notice[0]) ui_text(screen,880,36,26,0xffc94d,update_notice);
             if(section==0) {
                 ui_text(screen,274,88,18,0x80b4c8,view==1?folder:"Your music | Internal HDD and USB");
                 const char *home[]={"Music folder","Internal HDD","USB 0","USB 1","Current playlist","Start visualizer",pc_mode?"Disconnect PC Audio":"PC Audio - connect"};
@@ -482,7 +489,7 @@ int main(int argc,char **argv) {
                     }
                     if(!count) ui_text(screen,280,170,26,0xc2ccd9,"No BMP pictures here. Browse another folder.");
                 } else if(section==2 && focus && art_view==3) {
-                    const char *sites[]={"X - x.com","DeviantArt - deviantart.com","Pixiv - pixiv.net","ArtStation - artstation.com","Zerochan - zerochan.net","Pinterest - pinterest.com"};
+                    const char *sites[]={"X - https://x.com","DeviantArt - https://www.deviantart.com","Pixiv - https://www.pixiv.net","ArtStation - https://www.artstation.com","Zerochan - https://www.zerochan.net","Pinterest - https://www.pinterest.com"};
                     ui_text(screen,280,140,26,0xffffff,"Get pictures from these sites:");
                     for(int i=0;i<6;i++) ui_text(screen,280,180+i*36,26,0x32d5ed,sites[i]);
                     ui_text(screen,280,420,18,0x91b4c9,"Save a picture on your PC or phone, convert it to BMP");
@@ -510,6 +517,7 @@ int main(int argc,char **argv) {
                 ui_text(screen,280,386,18,0xc2ccd9,"MP3 playback | HDD, USB and PC Audio");
                 char perf[120]; snprintf(perf,sizeof(perf),"%u FPS | Target 60 | Auto exit: 10 seconds stalled / below 10 FPS",fps);
                 ui_text(screen,280,430,18,0x91b4c9,perf);
+                if(update_notice[0]) ui_text(screen,280,458,18,0xffc94d,update_notice);
             } else if(section==4) ui_text(screen,280,150,26,0xffffff,"Press X to exit Neon Lounge");
         }
         ui_rect(screen,0,608,1280,112,0x101a29);
@@ -534,6 +542,21 @@ int main(int argc,char **argv) {
                 safety_allow_seconds(10);
                 snprintf(message,sizeof(message),"%s",upd_msg);
             } else if(update_pending==1) update_pending=2;
+            else if(!auto_update_checked && SDL_GetTicks()-boot_ticks>3000) {
+                /* One-shot startup notice: tell the player an update is
+                 * out without downloading anything. Silent on any
+                 * failure; update_ran skips the slow-frame exit for
+                 * the blocking fetch, as in the manual check. */
+                char avail[16];
+                auto_update_checked=1;
+                update_ran=1;
+                safety_allow_seconds(30);
+                if(update_check_available(ASSETS,avail,sizeof(avail))==1) {
+                    snprintf(update_notice,sizeof(update_notice),"Update %s available!",avail);
+                    snprintf(message,sizeof(message),"Update %s available - Settings > Check for updates",avail);
+                }
+                safety_allow_seconds(10);
+            }
         }
         Uint32 elapsed=SDL_GetTicks()-start;
         if(!update_ran && frame_health_update(&health,elapsed)) {

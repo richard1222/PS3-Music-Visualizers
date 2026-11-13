@@ -243,6 +243,41 @@ static int copy_file(const char *src,const char *dst) {
     fclose(in); fclose(out);
     return 0;
 }
+/* Availability-only probe for the startup notice. Deliberately separate
+ * from update_check_and_install: the proven download path is untouched,
+ * and this fetch uses a short timeout so a slow network never stalls
+ * startup for long. Downloads nothing; silent failure (returns -1) is
+ * expected offline, and the caller shows no notice in that case. */
+int update_check_available(const char *assets_dir,char *version_out,size_t version_size) {
+    char manifest_text[4096];
+    MemBuf mem;
+    UpdateManifest man;
+    char ca_bundle[768];
+    CURL *c;
+    FILE *f;
+    int parse_rc;
+    if(!version_out || !version_size) return -1;
+    version_out[0]=0;
+    if(!assets_dir) return -1;
+    if(snprintf(ca_bundle,sizeof(ca_bundle),"%scerts/cacert.pem",assets_dir)>=(int)sizeof(ca_bundle)) return -1;
+    f=fopen(ca_bundle,"rb");
+    if(!f) return -1;
+    fclose(f);
+    if(!net_ready && update_net_init()) return -1;
+    memset(manifest_text,0,sizeof(manifest_text));
+    mem.buf=manifest_text;mem.len=0;mem.cap=sizeof(manifest_text);
+    c=easy_new(NL_UPDATE_URL,8L,ca_bundle);
+    if(!c) return -1;
+    curl_easy_setopt(c,CURLOPT_WRITEFUNCTION,mem_write);
+    curl_easy_setopt(c,CURLOPT_WRITEDATA,&mem);
+    if(fetch_ok(c)) { curl_easy_cleanup(c); return -1; }
+    curl_easy_cleanup(c);
+    parse_rc=update_parse_manifest(manifest_text,&man);
+    if(parse_rc) return -1;
+    if(!update_is_newer(man.version)) return 0;
+    snprintf(version_out,version_size,"%s",man.version);
+    return 1;
+}
 int update_check_and_install(const char *assets_dir,char *msg,size_t msg_size) {
     char manifest_text[4096];
     MemBuf mem;
@@ -320,6 +355,11 @@ void update_net_shutdown(void) {}
 int update_check_and_install(const char *assets_dir,char *msg,size_t msg_size) {
     (void)assets_dir;
     if(msg && msg_size) snprintf(msg,msg_size,"Updates are only available on PS3.");
+    return -1;
+}
+int update_check_available(const char *assets_dir,char *version_out,size_t version_size) {
+    (void)assets_dir;
+    if(version_out && version_size) version_out[0]=0;
     return -1;
 }
 #endif
