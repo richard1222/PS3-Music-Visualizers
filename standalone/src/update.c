@@ -136,12 +136,15 @@ int update_parse_manifest(const char *text,UpdateManifest *out) {
     if(!text || !out) return -1;
     memset(out,0,sizeof(*out));
     if(json_string(text,"version",out->version,sizeof(out->version))) return -1;
-    if(json_string(text,"eboot_url",out->url,sizeof(out->url))) return -1;
-    if(json_string(text,"eboot_sha256",out->sha256,sizeof(out->sha256))) return -1;
+    /* The pkg fields are required. Older manifests carried only the
+     * eboot fields for the EBOOT-swap updater, which can never install
+     * over a running program; there is no fallback to that path. */
+    if(json_string(text,"pkg_url",out->pkg_url,sizeof(out->pkg_url))) return UPDATE_ERR_INCOMPLETE;
+    if(json_string(text,"pkg_sha256",out->pkg_sha256,sizeof(out->pkg_sha256))) return UPDATE_ERR_INCOMPLETE;
     if(update_parse_version(out->version,&major,&minor)) return -1;
-    if(strncmp(out->url,"https://",8)) return -1;
-    if(strlen(out->sha256)!=64) return -1;
-    for(int i=0;i<64;i++) if(!isxdigit((unsigned char)out->sha256[i])) return -1;
+    if(strncmp(out->pkg_url,"https://",8)) return -1;
+    if(strlen(out->pkg_sha256)!=64) return -1;
+    for(int i=0;i<64;i++) if(!isxdigit((unsigned char)out->pkg_sha256[i])) return -1;
     return 0;
 }
 
@@ -186,7 +189,7 @@ static size_t file_write(void *ptr,size_t size,size_t nmemb,void *userdata) {
     FileBuf *fb=userdata;
     size_t n=size*nmemb;
     fb->total+=(long)n;
-    if(fb->total>NL_UPDATE_MAX_EBOOT) return 0;
+    if(fb->total>NL_UPDATE_MAX_PKG) return 0;
     return fwrite(ptr,1,n,fb->f);
 }
 static int progress_cb(void *clientp,double dltotal,double dlnow,double ultotal,double ulnow) {
@@ -211,7 +214,7 @@ static CURL *easy_new(const char *url,long timeout) {
     curl_easy_setopt(c,CURLOPT_NOPROGRESS,0L);
     curl_easy_setopt(c,CURLOPT_PROGRESSFUNCTION,progress_cb);
     /* No CA bundle ships with the app, so TLS peer verification is off.
-     * The downloaded EBOOT is still SHA-256 checked against the manifest,
+     * The downloaded PKG is still SHA-256 checked against the manifest,
      * which guards against corruption and bad downloads, but this does
      * not stop a determined network attacker. Full certificate checking
      * is a later hardening step, not part of this first version. */
@@ -236,7 +239,7 @@ static int copy_file(const char *src,const char *dst) {
     if(!out) { fclose(in); return -1; }
     while((got=fread(buf,1,sizeof(buf),in))>0) {
         total+=(long)got;
-        if(total>NL_UPDATE_MAX_EBOOT || fwrite(buf,1,got,out)!=got) { fclose(in); fclose(out); remove(dst); return -1; }
+        if(total>NL_UPDATE_MAX_PKG || fwrite(buf,1,got,out)!=got) { fclose(in); fclose(out); remove(dst); return -1; }
     }
     if(ferror(in)) { fclose(in); fclose(out); remove(dst); return -1; }
     fclose(in); fclose(out);
@@ -246,10 +249,11 @@ int update_check_and_install(const char *assets_dir,char *msg,size_t msg_size) {
     char manifest_text[4096];
     MemBuf mem;
     UpdateManifest man;
-    char staging[768],current[768],backup[768],tmpbak[768],hex[65];
+    char staging[768],target[768],fallback[768],hex[65];
     CURL *c;
     FILE *f;
     FileBuf fb;
+    int parse_rc;
     if(!msg || !msg_size) return -1;
     if(!assets_dir) { snprintf(msg,msg_size,"Update paths are unavailable."); return -1; }
     /* Retry network setup on every check: a single failure at startup
@@ -263,34 +267,48 @@ int update_check_and_install(const char *assets_dir,char *msg,size_t msg_size) {
     curl_easy_setopt(c,CURLOPT_WRITEDATA,&mem);
     if(fetch_ok(c)) { curl_easy_cleanup(c); snprintf(msg,msg_size,"Could not reach the update server."); return -1; }
     curl_easy_cleanup(c);
-    if(update_parse_manifest(manifest_text,&man)) { snprintf(msg,msg_size,"Update info is unreadable."); return -1; }
+    parse_rc=update_parse_manifest(manifest_text,&man);
+    if(parse_rc==UPDATE_ERR_INCOMPLETE) { snprintf(msg,msg_size,"Update information is incomplete."); return -1; }
+    if(parse_rc) { snprintf(msg,msg_size,"Update info is unreadable."); return -1; }
     if(!update_is_newer(man.version)) { snprintf(msg,msg_size,"You are up to date (version %s).",NL_VERSION); return 0; }
-    if(snprintf(staging,sizeof(staging),"%sEBOOT.BIN.new",assets_dir)>=(int)sizeof(staging) ||
-       snprintf(current,sizeof(current),"%sEBOOT.BIN",assets_dir)>=(int)sizeof(current) ||
-       snprintf(backup,sizeof(backup),"%sEBOOT.BIN.bak",assets_dir)>=(int)sizeof(backup) ||
-       snprintf(tmpbak,sizeof(tmpbak),"%sEBOOT.BIN.bak.new",assets_dir)>=(int)sizeof(tmpbak)) {
+    if(snprintf(staging,sizeof(staging),"%supdate.pkg.new",assets_dir)>=(int)sizeof(staging) ||
+       snprintf(target,sizeof(target),"%sneon_lounge.pkg",NL_PACKAGES_DIR)>=(int)sizeof(target) ||
+       snprintf(fallback,sizeof(fallback),"%sneon_lounge.pkg",assets_dir)>=(int)sizeof(fallback)) {
         snprintf(msg,msg_size,"Update paths are too long."); return -1;
     }
     f=fopen(staging,"wb");
     if(!f) { snprintf(msg,msg_size,"Could not save the update."); return -1; }
     fb.f=f;fb.total=0;
-    c=easy_new(man.url,120L);
+    c=easy_new(man.pkg_url,600L);
     if(!c) { fclose(f); remove(staging); snprintf(msg,msg_size,"Download failed."); return -1; }
     curl_easy_setopt(c,CURLOPT_WRITEFUNCTION,file_write);
     curl_easy_setopt(c,CURLOPT_WRITEDATA,&fb);
     if(fetch_ok(c)) { curl_easy_cleanup(c); fclose(f); remove(staging); snprintf(msg,msg_size,"Download failed."); return -1; }
     curl_easy_cleanup(c);
     fclose(f);
-    if(update_sha256_file(staging,hex) || strcasecmp(hex,man.sha256)) {
+    if(update_sha256_file(staging,hex) || strcasecmp(hex,man.pkg_sha256)) {
         remove(staging); snprintf(msg,msg_size,"Download failed the integrity check."); return -1;
     }
-    /* Copy to a temporary name first so a failed backup never destroys
-     * the previous EBOOT.BIN.bak. */
-    if(copy_file(current,tmpbak)) { remove(staging); snprintf(msg,msg_size,"Could not back up the current version."); return -1; }
-    if(rename(tmpbak,backup)) { remove(tmpbak); remove(staging); snprintf(msg,msg_size,"Could not back up the current version."); return -1; }
-    if(rename(staging,current)) { remove(staging); snprintf(msg,msg_size,"Could not install the update."); return -1; }
-    snprintf(msg,msg_size,"Update %s installed. Restart Neon Lounge.",man.version);
-    return 1;
+    /* The running EBOOT.BIN is locked by the system, so a downloaded
+     * update can never replace it in place (proven on hardware: the
+     * EBOOT-swap rename always failed). Stage the PKG where the
+     * Package Manager picks it up instead, and let the user install it. */
+    if(rename(staging,target)==0) {
+        snprintf(msg,msg_size,"Update %s ready: install neon_lounge.pkg via Package Manager.",man.version);
+        return 1;
+    }
+    if(copy_file(staging,target)==0) {
+        remove(staging);
+        snprintf(msg,msg_size,"Update %s ready: install neon_lounge.pkg via Package Manager.",man.version);
+        return 1;
+    }
+    if(rename(staging,fallback)==0) {
+        snprintf(msg,msg_size,"Update %s ready: install %s via Package Manager.",man.version,fallback);
+        return 1;
+    }
+    remove(staging);
+    snprintf(msg,msg_size,"Could not save the update package.");
+    return -1;
 }
 #else
 int update_net_init(void) { return -1; }
