@@ -32,5 +32,13 @@ class MusicGalleryTests(unittest.TestCase):
         check_image_budget([147584]*4)
         with self.assertRaisesRegex(ValueError,'budget'):check_image_budget([589952]*4)
         with self.assertRaises(ValueError):check_image_budget([147584]*3)
+    def test_native_loop_can_only_restart_after_a_full_delayed_cycle(self):
+        out=add_gallery(audio_fixture(),['a','b','c','d'],cycles=1,loop=True)
+        animation=out.find('MainTree/AnimTree/Animation')
+        self.assertEqual(sum(int(n.get('time')) for n in animation if n.tag=='Delay'),40000)
+        self.assertEqual(len(list(animation.iter('FireEvent'))),1)
+        self.assertEqual(animation[-1].tag,'FireEvent')
+        self.assertEqual(animation[-1].get('object'),'anim:'+GALLERY_NAME)
+        with self.assertRaises(ValueError):add_gallery(audio_fixture(),['a']*4,loop=True)
 
 if __name__=='__main__':unittest.main()
