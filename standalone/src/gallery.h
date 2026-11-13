@@ -11,6 +11,11 @@ typedef struct {
     char folder[512];
     int index,loaded;
     Uint32 changed;
+    /* Per-slide pre-scaled layers, rebuilt only when the slide or draw
+     * area changes, so gallery_draw is plain blits instead of two
+     * full-image software scales every frame. */
+    SDL_Surface *cache_dim,*cache_fg;
+    int cache_index,cache_x,cache_y,cache_w,cache_h,cache_iw,cache_ih;
 } Gallery;
 void gallery_open(Gallery *gallery,const char *folder);
 void gallery_close(Gallery *gallery);

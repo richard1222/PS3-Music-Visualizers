@@ -1,7 +1,7 @@
 #ifndef NL_UPDATE_H
 #define NL_UPDATE_H
 #include <stddef.h>
-#define NL_VERSION "1.00"
+#define NL_VERSION "1.01"
 #define NL_UPDATE_URL "https://raw.githubusercontent.com/richard1222/PS3-Music-Visualizers/main/standalone/update.json"
 #define NL_UPDATE_MAX_EBOOT (8*1024*1024)
 typedef struct { char version[16]; char url[512]; char sha256[65]; } UpdateManifest;

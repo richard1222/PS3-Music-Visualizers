@@ -9,6 +9,8 @@
 #include <curl/curl.h>
 #include <net/net.h>
 #include <net/netctl.h>
+#include <sysutil/sysutil.h>
+#include <unistd.h>
 #endif
 
 /* SHA-256 (FIPS 180-4), kept dependency-free so the hash check is
@@ -32,7 +34,7 @@ static const uint32_t sha_k[64]={
     0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2};
 static void sha_transform(SHA256_CTX *ctx,const uint8_t data[]) {
     uint32_t a,b,c,d,e,f,g,h,t1,t2,m[64];
-    for(int i=0,j=0;i<16;i++,j+=4) m[i]=(uint32_t)(data[j]<<24)|(uint32_t)(data[j+1]<<16)|(uint32_t)(data[j+2]<<8)|(uint32_t)data[j+3];
+    for(int i=0,j=0;i<16;i++,j+=4) m[i]=((uint32_t)data[j]<<24)|((uint32_t)data[j+1]<<16)|((uint32_t)data[j+2]<<8)|(uint32_t)data[j+3];
     for(int i=16;i<64;i++) m[i]=SIG1(m[i-2])+m[i-7]+SIG0(m[i-15])+m[i-16];
     a=ctx->state[0];b=ctx->state[1];c=ctx->state[2];d=ctx->state[3];e=ctx->state[4];f=ctx->state[5];g=ctx->state[6];h=ctx->state[7];
     for(int i=0;i<64;i++) {
@@ -149,6 +151,17 @@ int update_net_init(void) {
     if(net_ready) return 0;
     if(netInitialize()!=0) return -1;
     if(netCtlInit()!=0) { netFinalizeNetwork(); return -1; }
+    /* Best effort: if DHCP is still in flight on a just-booted console,
+     * wait a few seconds for an IP address instead of reporting success
+     * before the network can actually reach anything. A disconnected
+     * interface returns immediately; the fetch still fails gracefully
+     * if no address arrives. */
+    for(int i=0;i<50;i++) {
+        s32 state=0;
+        if(netCtlGetState(&state)!=0) break;
+        if(state==NET_CTL_STATE_IPObtained || state==NET_CTL_STATE_Disconnected) break;
+        usleep(100000);
+    }
     if(curl_global_init(CURL_GLOBAL_DEFAULT)!=CURLE_OK) { netCtlTerm(); netFinalizeNetwork(); return -1; }
     net_ready=1;
     return 0;
@@ -176,7 +189,13 @@ static size_t file_write(void *ptr,size_t size,size_t nmemb,void *userdata) {
     if(fb->total>NL_UPDATE_MAX_EBOOT) return 0;
     return fwrite(ptr,1,n,fb->f);
 }
-static CURL *easy_new(const char *url) {
+static int progress_cb(void *clientp,double dltotal,double dlnow,double ultotal,double ulnow) {
+    (void)clientp;(void)dltotal;(void)dlnow;(void)ultotal;(void)ulnow;
+    /* Keep system-menu/PS-button events dispatched during downloads. */
+    sysUtilCheckCallback();
+    return 0;
+}
+static CURL *easy_new(const char *url,long timeout) {
     CURL *c=curl_easy_init();
     char agent[32];
     if(!c) return NULL;
@@ -184,8 +203,13 @@ static CURL *easy_new(const char *url) {
     curl_easy_setopt(c,CURLOPT_URL,url);
     curl_easy_setopt(c,CURLOPT_FOLLOWLOCATION,1L);
     curl_easy_setopt(c,CURLOPT_USERAGENT,agent);
-    curl_easy_setopt(c,CURLOPT_TIMEOUT,20L);
+    curl_easy_setopt(c,CURLOPT_TIMEOUT,timeout);
     curl_easy_setopt(c,CURLOPT_CONNECTTIMEOUT,10L);
+    /* Abort a stalled transfer, but let a slow (not stuck) download finish. */
+    curl_easy_setopt(c,CURLOPT_LOW_SPEED_LIMIT,1024L);
+    curl_easy_setopt(c,CURLOPT_LOW_SPEED_TIME,15L);
+    curl_easy_setopt(c,CURLOPT_NOPROGRESS,0L);
+    curl_easy_setopt(c,CURLOPT_PROGRESSFUNCTION,progress_cb);
     /* No CA bundle ships with the app, so TLS peer verification is off.
      * The downloaded EBOOT is still SHA-256 checked against the manifest,
      * which guards against corruption and bad downloads, but this does
@@ -222,15 +246,18 @@ int update_check_and_install(const char *assets_dir,char *msg,size_t msg_size) {
     char manifest_text[4096];
     MemBuf mem;
     UpdateManifest man;
-    char staging[768],current[768],backup[768],hex[65];
+    char staging[768],current[768],backup[768],tmpbak[768],hex[65];
     CURL *c;
     FILE *f;
     FileBuf fb;
     if(!msg || !msg_size) return -1;
-    if(!net_ready || !assets_dir) { snprintf(msg,msg_size,"Network unavailable. Check the PS3 network connection."); return -1; }
+    if(!assets_dir) { snprintf(msg,msg_size,"Update paths are unavailable."); return -1; }
+    /* Retry network setup on every check: a single failure at startup
+     * must not disable updates for the whole session. */
+    if(!net_ready && update_net_init()) { snprintf(msg,msg_size,"Network unavailable. Check the PS3 network connection."); return -1; }
     memset(manifest_text,0,sizeof(manifest_text));
     mem.buf=manifest_text;mem.len=0;mem.cap=sizeof(manifest_text);
-    c=easy_new(NL_UPDATE_URL);
+    c=easy_new(NL_UPDATE_URL,20L);
     if(!c) { snprintf(msg,msg_size,"Could not reach the update server."); return -1; }
     curl_easy_setopt(c,CURLOPT_WRITEFUNCTION,mem_write);
     curl_easy_setopt(c,CURLOPT_WRITEDATA,&mem);
@@ -240,13 +267,14 @@ int update_check_and_install(const char *assets_dir,char *msg,size_t msg_size) {
     if(!update_is_newer(man.version)) { snprintf(msg,msg_size,"You are up to date (version %s).",NL_VERSION); return 0; }
     if(snprintf(staging,sizeof(staging),"%sEBOOT.BIN.new",assets_dir)>=(int)sizeof(staging) ||
        snprintf(current,sizeof(current),"%sEBOOT.BIN",assets_dir)>=(int)sizeof(current) ||
-       snprintf(backup,sizeof(backup),"%sEBOOT.BIN.bak",assets_dir)>=(int)sizeof(backup)) {
+       snprintf(backup,sizeof(backup),"%sEBOOT.BIN.bak",assets_dir)>=(int)sizeof(backup) ||
+       snprintf(tmpbak,sizeof(tmpbak),"%sEBOOT.BIN.bak.new",assets_dir)>=(int)sizeof(tmpbak)) {
         snprintf(msg,msg_size,"Update paths are too long."); return -1;
     }
     f=fopen(staging,"wb");
     if(!f) { snprintf(msg,msg_size,"Could not save the update."); return -1; }
     fb.f=f;fb.total=0;
-    c=easy_new(man.url);
+    c=easy_new(man.url,120L);
     if(!c) { fclose(f); remove(staging); snprintf(msg,msg_size,"Download failed."); return -1; }
     curl_easy_setopt(c,CURLOPT_WRITEFUNCTION,file_write);
     curl_easy_setopt(c,CURLOPT_WRITEDATA,&fb);
@@ -256,8 +284,10 @@ int update_check_and_install(const char *assets_dir,char *msg,size_t msg_size) {
     if(update_sha256_file(staging,hex) || strcasecmp(hex,man.sha256)) {
         remove(staging); snprintf(msg,msg_size,"Download failed the integrity check."); return -1;
     }
-    remove(backup);
-    if(copy_file(current,backup)) { remove(staging); snprintf(msg,msg_size,"Could not back up the current version."); return -1; }
+    /* Copy to a temporary name first so a failed backup never destroys
+     * the previous EBOOT.BIN.bak. */
+    if(copy_file(current,tmpbak)) { remove(staging); snprintf(msg,msg_size,"Could not back up the current version."); return -1; }
+    if(rename(tmpbak,backup)) { remove(tmpbak); remove(staging); snprintf(msg,msg_size,"Could not back up the current version."); return -1; }
     if(rename(staging,current)) { remove(staging); snprintf(msg,msg_size,"Could not install the update."); return -1; }
     snprintf(msg,msg_size,"Update %s installed. Restart Neon Lounge.",man.version);
     return 1;

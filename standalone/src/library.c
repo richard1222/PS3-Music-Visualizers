@@ -14,6 +14,15 @@
 #define library_stat lstat
 #endif
 static int scan_budget;
+static struct { dev_t dev; ino_t ino; } seen_dirs[1024];
+static int seen_count;
+static int dir_seen(dev_t dev,ino_t ino) {
+    for(int i=0;i<seen_count;i++) if(seen_dirs[i].dev==dev && seen_dirs[i].ino==ino) return 1;
+    return 0;
+}
+static void dir_remember(dev_t dev,ino_t ino) {
+    if(seen_count<1024) { seen_dirs[seen_count].dev=dev; seen_dirs[seen_count].ino=ino; seen_count++; }
+}
 static int is_mp3(const char *s) {
     const char *ext=strrchr(s,'.');
     return ext && !strcasecmp(ext,".mp3");
@@ -35,6 +44,13 @@ static void scan(Library *l,const char *root,int depth) {
         if(entry->d_name[0]=='.' || strlen(entry->d_name)>=256) continue;
         if(library_join(path,root,entry->d_name) || library_stat(path,&st)) { l->errors++; continue; }
         if(S_ISDIR(st.st_mode)) {
+            /* On PS3, stat follows symlinks, so a symlinked directory loop
+             * would revisit the same directory. Skip directories already
+             * seen by (device, inode). An inode of 0 means the filesystem
+             * reports none, so tracking is skipped rather than risking
+             * false matches; depth and budget bounds still apply. */
+            if(st.st_ino!=0 && dir_seen(st.st_dev,st.st_ino)) continue;
+            if(st.st_ino!=0) dir_remember(st.st_dev,st.st_ino);
             if(depth<8) scan(l,path,depth+1); else l->truncated=1;
         } else if(S_ISREG(st.st_mode) && is_mp3(entry->d_name)) {
             if(l->count==NL_TRACKS) { l->truncated=1; break; }
@@ -49,6 +65,11 @@ static int track_compare(const void *a,const void *b) { return strcasecmp(((cons
 int library_scan(Library *l,const char *root) {
     memset(l,0,sizeof(*l));
     if(!root || !*root) return -1;
+    seen_count=0;
+    {
+        struct stat st;
+        if(library_stat(root,&st)==0 && st.st_ino!=0) dir_remember(st.st_dev,st.st_ino);
+    }
     scan_budget=8192;
     scan(l,root,0); qsort(l->tracks,l->count,sizeof(Track),track_compare);
     return l->count;

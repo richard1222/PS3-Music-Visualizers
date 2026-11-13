@@ -44,7 +44,9 @@ SDL_Surface *display_open(void) {
     if(videoGetResolution(state.displayMode.resolution,&resolution)) return NULL;
     if(!resolution.width || !resolution.height || resolution.width>1920 || resolution.height>1080) return NULL;
     io_memory=memalign(1024*1024,1024*1024);
-    if(!io_memory || rsxInit(&context,0x10000,1024*1024,io_memory) || !context) return NULL;
+    if(!io_memory) return NULL;
+    context=NULL;
+    if(rsxInit(&context,0x10000,1024*1024,io_memory) || !context) { context=NULL; return NULL; }
     memset(&config,0,sizeof(config));
     config.resolution=state.displayMode.resolution;
     config.aspect=state.displayMode.aspect;

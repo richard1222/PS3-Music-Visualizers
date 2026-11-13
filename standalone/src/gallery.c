@@ -70,6 +70,7 @@ void gallery_open(Gallery *g,const char *folder) {
 }
 void gallery_close(Gallery *g) {
     for(int i=0;i<NL_GALLERY_SLIDES;i++) SDL_FreeSurface(g->images[i]);
+    SDL_FreeSurface(g->cache_dim); SDL_FreeSurface(g->cache_fg);
     memset(g,0,sizeof(*g));g->index=-1;
 }
 void gallery_step(Gallery *g,int direction,Uint32 now) {
@@ -87,18 +88,40 @@ const char *gallery_title(const Gallery *g) {return (g->index>=0 && g->index<NL_
 void gallery_draw(Gallery *g,SDL_Surface *screen,int x,int y,int w,int h,Uint32 now) {
     if(g->index<0) return;
     SDL_Surface *image=g->images[g->index];
+    if(!image) return;
     SDL_Rect area={x*screen->w/1280,y*screen->h/720,w*screen->w/1280,h*screen->h/720};
+    if(area.w<1 || area.h<1) return;
+    if(g->cache_index!=g->index || !g->cache_dim || !g->cache_fg ||
+       g->cache_x!=area.x || g->cache_y!=area.y || g->cache_w!=area.w || g->cache_h!=area.h) {
+        SDL_FreeSurface(g->cache_dim); SDL_FreeSurface(g->cache_fg);
+        g->cache_dim=NULL; g->cache_fg=NULL;
+        g->cache_dim=SDL_CreateRGBSurfaceWithFormat(0,area.w,area.h,32,SDL_PIXELFORMAT_ARGB8888);
+        if(!g->cache_dim) return;
+        SDL_SetSurfaceColorMod(image,40,40,40);
+        SDL_BlitScaled(image,NULL,g->cache_dim,NULL);
+        SDL_SetSurfaceColorMod(image,255,255,255);
+        float scale=fminf((float)area.w/image->w,(float)area.h/image->h);
+        int iw=(int)(image->w*scale),ih=(int)(image->h*scale);
+        if(iw<1) iw=1;
+        if(ih<1) ih=1;
+        g->cache_fg=SDL_CreateRGBSurfaceWithFormat(0,iw,ih,32,SDL_PIXELFORMAT_ARGB8888);
+        if(!g->cache_fg) { SDL_FreeSurface(g->cache_dim); g->cache_dim=NULL; return; }
+        SDL_BlitScaled(image,NULL,g->cache_fg,NULL);
+        g->cache_index=g->index; g->cache_x=area.x; g->cache_y=area.y;
+        g->cache_w=area.w; g->cache_h=area.h; g->cache_iw=iw; g->cache_ih=ih;
+    }
     SDL_Rect old;SDL_GetClipRect(screen,&old);SDL_SetClipRect(screen,&area);
-    /* A dim copy fills the frame. The moving foreground preserves the whole
-     * image at its original aspect ratio, with no cropped heads or stretching. */
-    SDL_SetSurfaceColorMod(image,40,40,40);SDL_BlitScaled(image,NULL,screen,&area);
-    SDL_SetSurfaceColorMod(image,255,255,255);
-    float scale=fminf((float)area.w/image->w,(float)area.h/image->h);
+    /* A dim copy fills the frame. The foreground preserves the whole image
+     * at its original aspect ratio, with no cropped heads or stretching.
+     * Motion is a slow 2px drift instead of a per-frame rescale, so the
+     * visualizer can hold 60fps. */
+    SDL_Rect dst={area.x,area.y,0,0};
+    SDL_BlitSurface(g->cache_dim,NULL,screen,&dst);
     float phase=(Uint32)(now-g->changed)*0.0005235988f;
-    scale*=0.975f+0.015f*sinf(phase);
-    int iw=(int)(image->w*scale),ih=(int)(image->h*scale);
-    SDL_Rect dst={area.x+(area.w-iw)/2,area.y+(area.h-ih)/2,iw,ih};
-    SDL_BlitScaled(image,NULL,screen,&dst);SDL_SetClipRect(screen,&old);
+    int dx=(int)(2.0f*sinf(phase)),dy=(int)(1.0f*cosf(phase));
+    SDL_Rect fg={area.x+(area.w-g->cache_iw)/2+dx,area.y+(area.h-g->cache_ih)/2+dy,0,0};
+    SDL_BlitSurface(g->cache_fg,NULL,screen,&fg);
+    SDL_SetClipRect(screen,&old);
 }
 static int gallery_fail(char *err,size_t size,const char *msg) {
     if(err && size) snprintf(err,size,"%s",msg);
@@ -168,7 +191,22 @@ int gallery_remove_current(Gallery *g,char *err,size_t err_size) {
     mkdir(removed_dir,0777);
     if(snprintf(backup,sizeof(backup),"%s/%s",removed_dir,name)>=(int)sizeof(backup))
         return gallery_fail(err,err_size,"Could not remove that artwork.");
-    remove(backup);
+    /* Never overwrite an earlier backup: use a numbered name instead. */
+    for(int i=1;i<=9;i++) {
+        FILE *probe=fopen(backup,"rb");
+        const char *ext;
+        int n;
+        if(!probe) break;
+        fclose(probe);
+        ext=strrchr(name,'.');
+        if(ext) n=snprintf(backup,sizeof(backup),"%s/%.*s.%d%s",removed_dir,(int)(ext-name),name,i,ext);
+        else n=snprintf(backup,sizeof(backup),"%s/%s.%d",removed_dir,name,i);
+        if(n<0 || n>=(int)sizeof(backup)) return gallery_fail(err,err_size,"Could not remove that artwork.");
+    }
+    {
+        FILE *probe=fopen(backup,"rb");
+        if(probe) { fclose(probe); return gallery_fail(err,err_size,"A backup of that artwork already exists."); }
+    }
     if(rename(src,backup)) return gallery_fail(err,err_size,"Could not remove that artwork.");
     gallery_close(g); gallery_open(g,folder);
     return 0;

@@ -19,7 +19,8 @@ int main(void) {
     CHECK(update_parse_version("a.b",&major,&minor)!=0);
     CHECK(update_parse_version("",&major,&minor)!=0);
     CHECK(update_parse_version("1.00x",&major,&minor)!=0);
-    CHECK(update_is_newer("1.01")==1);
+    CHECK(update_is_newer("1.02")==1);
+    CHECK(update_is_newer("1.01")==0);
     CHECK(update_is_newer("1.00")==0);
     CHECK(update_is_newer("0.99")==0);
     CHECK(update_is_newer("2.00")==1);
@@ -37,9 +38,21 @@ int main(void) {
     write_tmp("test_update_abc.bin","abc");
     CHECK(update_sha256_file("test_update_abc.bin",hex)==0);
     CHECK(!strcmp(hex,"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
+    write_tmp("test_update_56.bin","abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq");
+    CHECK(update_sha256_file("test_update_56.bin",hex)==0);
+    CHECK(!strcmp(hex,"248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"));
+    {
+        FILE *f=fopen("test_update_1m.bin","wb");
+        for(int i=0;i<1000000;i++) fputc('a',f);
+        fclose(f);
+    }
+    CHECK(update_sha256_file("test_update_1m.bin",hex)==0);
+    CHECK(!strcmp(hex,"cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"));
     CHECK(update_sha256_file("test_update_missing.bin",hex)!=0);
     remove("test_update_empty.bin");
     remove("test_update_abc.bin");
+    remove("test_update_56.bin");
+    remove("test_update_1m.bin");
     if(fails) { printf("Update tests: %d failures\n",fails); return 1; }
     printf("Update: version compare, manifest parsing and SHA-256 checks passed\n");
     return 0;

@@ -266,11 +266,13 @@ int main(int argc,char **argv) {
         }
         if(pressed&B_LEFT) {
             if(section==3 && focus && settings_selection==0) change_volume(-5);
+            else if(section==3 && focus) {}
             else if(section==0 && focus && view==0 && selection!=0 && selection!=4) selection--;
             else focus=0;
         }
         if(pressed&B_RIGHT) {
             if(section==3 && focus && settings_selection==0) change_volume(5);
+            else if(section==3 && focus) {}
             else if(section==0 && focus && view==0 && selection!=3 && selection!=5) selection++;
             else focus=1;
         }
@@ -348,19 +350,14 @@ int main(int argc,char **argv) {
                 }
             }
         } else if(section==3) {
-            if(pressed&B_UP) settings_selection=(settings_selection+1)%2;
-            if(pressed&B_DOWN) settings_selection=(settings_selection+1)%2;
+            if(pressed&B_UP) settings_selection=0;
+            if(pressed&B_DOWN) settings_selection=1;
             if(pressed&B_X && settings_selection==1 && !update_pending) { update_pending=1; snprintf(message,sizeof(message),"Checking for updates..."); }
         } else if(section==1 && (pressed&B_X)) toggle_pause();
         NL_INPUT(pressed,section,focus);
         if(audio && SDL_AtomicGet(&finished)) {
             int next=playing+1;
             if(next<library.count) play_track(next); else {stop_music();snprintf(message,sizeof(message),"Playlist finished");}
-        }
-        if(update_pending) {
-            update_pending=0;
-            update_check_and_install(ASSETS,upd_msg,sizeof(upd_msg));
-            snprintf(message,sizeof(message),"%s",upd_msg);
         }
         float snapshot[SV_FFT]={0}; Spectrum spectrum;
         if(audio && !paused) {
@@ -462,11 +459,11 @@ int main(int argc,char **argv) {
                     ui_text(screen,280,574,18,0x91b4c9,gallery_label);
                 }
             } else if(section==3) {
-                ui_rect(screen,266,138,960,40,focus && settings_selection==0?0x195366:0x15283c);
+                ui_rect(screen,266,138,960,40,focus && settings_selection==0?0x195366:0x101a29);
                 ui_text(screen,280,142,26,0xffffff,"Playback volume");
                 ui_rect(screen,280,200,660,12,0x294054); ui_rect(screen,280,200,SDL_AtomicGet(&volume)*660/100,12,0x32d5ed);
                 ui_text(screen,280,250,18,0xc2ccd9,"Left / Right or L2 / R2 to adjust");
-                ui_rect(screen,266,300,960,40,focus && settings_selection==1?0x195366:0x15283c);
+                ui_rect(screen,266,300,960,40,focus && settings_selection==1?0x195366:0x101a29);
                 ui_text(screen,280,304,26,0xffffff,"Check for updates");
                 ui_text(screen,280,360,18,0x91b4c9,"Neon Lounge " NL_VERSION " | Updates from GitHub");
                 ui_text(screen,280,386,18,0xc2ccd9,"MP3 playback | Read-only HDD and USB browsing");
@@ -481,8 +478,18 @@ int main(int argc,char **argv) {
         NL_TRACE("before-present");
         if(display_present()) running=0;
         NL_TRACE("present-complete");
+        /* Run the update check only after a frame showing "Checking for
+         * updates..." has been presented, so the check never looks like
+         * a silent freeze. The check itself still blocks this thread. */
+        if(running) {
+            if(update_pending==2) {
+                update_pending=0;
+                update_check_and_install(ASSETS,upd_msg,sizeof(upd_msg));
+                snprintf(message,sizeof(message),"%s",upd_msg);
+            } else if(update_pending==1) update_pending=2;
+        }
         Uint32 elapsed=SDL_GetTicks()-start;
-        if(elapsed<33) SDL_Delay(33-elapsed);
+        if(elapsed<16) SDL_Delay(16-elapsed);
         NL_TRACE("delay-complete");
         NL_FRAME_COMPLETE();
     }
