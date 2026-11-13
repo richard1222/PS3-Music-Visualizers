@@ -41,6 +41,11 @@ SDL_Surface *display_open(void) {
     videoState state; videoResolution resolution; videoConfiguration config;
     u32 offset; u64 start;
     if(videoGetState(VIDEO_PRIMARY,0,&state)) return NULL;
+    /* Render at the canvas's native 720p when supported. CPU upscaling each
+     * frame to 1080p consumed a full refresh on hardware. This changes this
+     * application's output mode, not the user's saved XMB video settings. */
+    if(videoGetResolutionAvailability(VIDEO_PRIMARY,VIDEO_RESOLUTION_720,state.displayMode.aspect,0)>0)
+        state.displayMode.resolution=VIDEO_RESOLUTION_720;
     if(videoGetResolution(state.displayMode.resolution,&resolution)) return NULL;
     if(!resolution.width || !resolution.height || resolution.width>1920 || resolution.height>1080) return NULL;
     io_memory=memalign(1024*1024,1024*1024);
@@ -79,7 +84,9 @@ SDL_Surface *display_open(void) {
 }
 int display_present(void) {
     if(!canvas || !context || wait_for_flip()) return -1;
-    if(SDL_BlitScaled(canvas,NULL,buffers[current],NULL)) return -1;
+    if(canvas->w==buffers[current]->w && canvas->h==buffers[current]->h) {
+        if(SDL_BlitSurface(canvas,NULL,buffers[current],NULL)) return -1;
+    } else if(SDL_BlitScaled(canvas,NULL,buffers[current],NULL)) return -1;
     flush_pixels(pixels[current],buffers[current]->pitch*buffers[current]->h);
     if(gcmSetFlip(context,current)) return -1;
     rsxFlushBuffer(context); pending=1; last_displayed=current; current=(current+1)%2;

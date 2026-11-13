@@ -35,6 +35,8 @@ make           # builds neon_lounge.self
 make pkg       # builds neon_lounge.pkg
 make host-test # host unit tests (spectrum, library, display guard, system
                # state, thread stacks, clock, update)
+make host-tls-test # local HTTPS integration tests; requires host libcurl,
+                   # Python 3 and OpenSSL
 ```
 
 `update.c` links curl/mbedTLS for the update check; the version compare,
@@ -47,6 +49,16 @@ and are not published here. A fresh checkout needs `local/package/` populated
 with `USRDIR/art/`, `USRDIR/fonts/` and `local/ICON0.PNG` before `make pkg`
 produces a working package. Do not commit artwork you do not have the rights
 to publish.
+
+For a fresh asset directory, stage the updater's Mozilla trust bundle with:
+
+```sh
+python3 tools/fetch_update_ca.py local/package/USRDIR/certs
+```
+
+The helper verifies curl's published SHA-256 and saves the MPL 2.0 license
+and source information beside the bundle. It preserves an existing directory.
+Packaging fails if the trust bundle is missing.
 
 ## Pushing an update
 
@@ -63,7 +75,44 @@ to publish.
 5. On the PS3, Settings > Check for updates downloads the new package to
    `/dev_hdd0/packages/`; install it from the XMB Package Manager.
 
-The app checks the downloaded package's SHA-256 against `update.json`
-before staging it. TLS certificate verification is off in the updater;
-the SHA-256 check guards against corruption and bad downloads, not a
-determined network attacker.
+The updater verifies the server certificate and hostname using
+`USRDIR/certs/cacert.pem`. Both the manifest and package transfers require
+HTTPS, including redirects, and the downloaded package's SHA-256 is checked
+against `update.json` before staging. A missing or invalid certificate bundle
+fails the update; it never falls back to an unverified connection.
+
+## PC Audio (development candidate)
+
+The Music screen has a PC Audio connect/disconnect button. Start the companion
+on a Windows PC on the same LAN, then connect from the PS3. Spotify or YouTube
+runs on the PC; this is speaker-output streaming, without native service login,
+Spotify Connect certification, or in-app track selection from those services.
+
+```powershell
+py -m venv local/pc-audio-venv
+local/pc-audio-venv/Scripts/python -m pip install -r tools/pc-audio-requirements.txt
+local/pc-audio-venv/Scripts/python tools/pc_audio.py --bind PC_LAN_IP --ps3 PS3_LAN_IP
+```
+
+Replace the two placeholders with private IPv4 addresses. Both devices need
+local UDP port 45832 discovery and TCP port 45833 connectivity. Discovery sends
+a fresh session credential only to the configured console. The audio travels
+unencrypted over the trusted LAN; never forward these ports to the internet.
+The companion captures the PC's default speaker output, not its microphone,
+and saves no audio. Capture starts on connection; Ctrl+C stops the companion.
+Notifications and other sounds on that output will be shared too. Keep PS3
+capture monitoring off that same output to avoid an audio feedback loop.
+
+PC mode uses a separate network thread and a bounded PCM buffer (150 ms startup,
+500 ms maximum), with silence on starvation. L2/R2 and Start retain volume and
+pause controls; change Spotify/YouTube tracks on the PC. Choose PC Audio again
+to disconnect, or choose a local track to return to HDD/USB playback.
+
+Native rendering prefers supported 720p output to avoid software upscaling to
+1080p on every frame. It uses RSX vblank pacing, targeting 60 FPS when the display and
+render workload permit it. Settings shows measured application FPS. A watchdog
+exits the app after ten seconds without a main-loop heartbeat. Ten continuous
+seconds below 10 FPS requests a normal exit; isolated slow frames do not.
+An update download receives a bounded longer deadline. This cannot guarantee
+recovery from a kernel or GPU failure. Hardware frame-rate and recovery checks
+are required before release.

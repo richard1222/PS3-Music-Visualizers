@@ -107,6 +107,13 @@ void gallery_draw(Gallery *g,SDL_Surface *screen,int x,int y,int w,int h,Uint32 
         g->cache_fg=SDL_CreateRGBSurfaceWithFormat(0,iw,ih,32,SDL_PIXELFORMAT_ARGB8888);
         if(!g->cache_fg) { SDL_FreeSurface(g->cache_dim); g->cache_dim=NULL; return; }
         SDL_BlitScaled(image,NULL,g->cache_fg,NULL);
+        /* RGB wallpapers are opaque. Avoid alpha-compositing two complete
+         * 720p images every frame when a direct copy gives identical pixels.
+         * Keep normal blending for artwork that actually has an alpha mask. */
+        if(!image->format->Amask) {
+            SDL_SetSurfaceBlendMode(g->cache_dim,SDL_BLENDMODE_NONE);
+            SDL_SetSurfaceBlendMode(g->cache_fg,SDL_BLENDMODE_NONE);
+        }
         g->cache_index=g->index; g->cache_x=area.x; g->cache_y=area.y;
         g->cache_w=area.w; g->cache_h=area.h; g->cache_iw=iw; g->cache_ih=ih;
     }
@@ -115,11 +122,27 @@ void gallery_draw(Gallery *g,SDL_Surface *screen,int x,int y,int w,int h,Uint32 
      * at its original aspect ratio, with no cropped heads or stretching.
      * Motion is a slow 2px drift instead of a per-frame rescale, so the
      * visualizer can hold 60fps. */
-    SDL_Rect dst={area.x,area.y,0,0};
-    SDL_BlitSurface(g->cache_dim,NULL,screen,&dst);
     float phase=(Uint32)(now-g->changed)*0.0005235988f;
     int dx=(int)(2.0f*sinf(phase)),dy=(int)(1.0f*cosf(phase));
     SDL_Rect fg={area.x+(area.w-g->cache_iw)/2+dx,area.y+(area.h-g->cache_ih)/2+dy,0,0};
+    SDL_BlendMode blend; SDL_GetSurfaceBlendMode(g->cache_fg,&blend);
+    SDL_Rect cover={fg.x,fg.y,g->cache_iw,g->cache_ih},visible;
+    if(blend==SDL_BLENDMODE_NONE && SDL_IntersectRect(&area,&cover,&visible)) {
+        /* Opaque foreground hides the dim copy: paint only exposed borders. */
+        SDL_Rect borders[4]={
+            {area.x,area.y,area.w,visible.y-area.y},
+            {area.x,visible.y+visible.h,area.w,area.y+area.h-visible.y-visible.h},
+            {area.x,visible.y,visible.x-area.x,visible.h},
+            {visible.x+visible.w,visible.y,area.x+area.w-visible.x-visible.w,visible.h}
+        };
+        for(int i=0;i<4;i++) if(borders[i].w>0 && borders[i].h>0) {
+            SDL_Rect src={borders[i].x-area.x,borders[i].y-area.y,borders[i].w,borders[i].h};
+            SDL_BlitSurface(g->cache_dim,&src,screen,&borders[i]);
+        }
+    } else {
+        SDL_Rect dst={area.x,area.y,0,0};
+        SDL_BlitSurface(g->cache_dim,NULL,screen,&dst);
+    }
     SDL_BlitSurface(g->cache_fg,NULL,screen,&fg);
     SDL_SetClipRect(screen,&old);
 }

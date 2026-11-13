@@ -6,7 +6,9 @@
 #include <ctype.h>
 #include <stdint.h>
 #ifdef NEON_PS3
+#include <sys/time.h>
 #include <curl/curl.h>
+#include "update_tls.h"
 #include <net/net.h>
 #include <net/netctl.h>
 #include <sysutil/sysutil.h>
@@ -198,7 +200,7 @@ static int progress_cb(void *clientp,double dltotal,double dlnow,double ultotal,
     sysUtilCheckCallback();
     return 0;
 }
-static CURL *easy_new(const char *url,long timeout) {
+static CURL *easy_new(const char *url,long timeout,const char *ca_bundle) {
     CURL *c=curl_easy_init();
     char agent[32];
     if(!c) return NULL;
@@ -213,13 +215,9 @@ static CURL *easy_new(const char *url,long timeout) {
     curl_easy_setopt(c,CURLOPT_LOW_SPEED_TIME,15L);
     curl_easy_setopt(c,CURLOPT_NOPROGRESS,0L);
     curl_easy_setopt(c,CURLOPT_PROGRESSFUNCTION,progress_cb);
-    /* No CA bundle ships with the app, so TLS peer verification is off.
-     * The downloaded PKG is still SHA-256 checked against the manifest,
-     * which guards against corruption and bad downloads, but this does
-     * not stop a determined network attacker. Full certificate checking
-     * is a later hardening step, not part of this first version. */
-    curl_easy_setopt(c,CURLOPT_SSL_VERIFYPEER,0L);
-    curl_easy_setopt(c,CURLOPT_SSL_VERIFYHOST,0L);
+    if(update_configure_tls(c,ca_bundle)!=CURLE_OK) {
+        curl_easy_cleanup(c);return NULL;
+    }
     return c;
 }
 static int fetch_ok(CURL *c) {
@@ -249,19 +247,25 @@ int update_check_and_install(const char *assets_dir,char *msg,size_t msg_size) {
     char manifest_text[4096];
     MemBuf mem;
     UpdateManifest man;
-    char staging[768],target[768],fallback[768],hex[65];
+    char staging[768],target[768],fallback[768],hex[65],ca_bundle[768];
     CURL *c;
     FILE *f;
     FileBuf fb;
     int parse_rc;
     if(!msg || !msg_size) return -1;
     if(!assets_dir) { snprintf(msg,msg_size,"Update paths are unavailable."); return -1; }
+    if(snprintf(ca_bundle,sizeof(ca_bundle),"%scerts/cacert.pem",assets_dir)>=(int)sizeof(ca_bundle)) {
+        snprintf(msg,msg_size,"Update paths are too long.");return -1;
+    }
+    f=fopen(ca_bundle,"rb");
+    if(!f) { snprintf(msg,msg_size,"Update certificates unavailable. Reinstall the app package.");return -1; }
+    fclose(f);
     /* Retry network setup on every check: a single failure at startup
      * must not disable updates for the whole session. */
     if(!net_ready && update_net_init()) { snprintf(msg,msg_size,"Network unavailable. Check the PS3 network connection."); return -1; }
     memset(manifest_text,0,sizeof(manifest_text));
     mem.buf=manifest_text;mem.len=0;mem.cap=sizeof(manifest_text);
-    c=easy_new(NL_UPDATE_URL,20L);
+    c=easy_new(NL_UPDATE_URL,20L,ca_bundle);
     if(!c) { snprintf(msg,msg_size,"Could not reach the update server."); return -1; }
     curl_easy_setopt(c,CURLOPT_WRITEFUNCTION,mem_write);
     curl_easy_setopt(c,CURLOPT_WRITEDATA,&mem);
@@ -279,7 +283,7 @@ int update_check_and_install(const char *assets_dir,char *msg,size_t msg_size) {
     f=fopen(staging,"wb");
     if(!f) { snprintf(msg,msg_size,"Could not save the update."); return -1; }
     fb.f=f;fb.total=0;
-    c=easy_new(man.pkg_url,600L);
+    c=easy_new(man.pkg_url,600L,ca_bundle);
     if(!c) { fclose(f); remove(staging); snprintf(msg,msg_size,"Download failed."); return -1; }
     curl_easy_setopt(c,CURLOPT_WRITEFUNCTION,file_write);
     curl_easy_setopt(c,CURLOPT_WRITEDATA,&fb);

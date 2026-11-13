@@ -20,6 +20,9 @@
 #include "visualizer.h"
 #include "gallery.h"
 #include "update.h"
+#include "pc_audio.h"
+#include "frame_health.h"
+#include "safety.h"
 SYS_PROCESS_PARAM(1001,0x100000);
 #define ASSETS "/dev_hdd0/game/SVIZ00001/USRDIR/"
 #include "diagnostic.h"
@@ -36,6 +39,8 @@ static SDL_atomic_t decoded_blocks;
 #endif
 static float pcm[SV_FFT];
 static unsigned pcm_position;
+static int pc_mode;
+static SDL_Surface *art_cache,*art_cache_source;
 static int rate=48000,channels=2,playing=-1,paused,decoder_open;
 static char message[160]="Choose a folder or an MP3 to begin";
 static size_t file_read(void *buf,size_t size,void *userdata) { return fread(buf,1,size,(FILE*)userdata); }
@@ -45,21 +50,22 @@ static int file_seek(uint64_t position,void *userdata) {
 static void audio_callback(void *userdata,Uint8 *stream,int bytes) {
     (void)userdata;
     memset(stream,0,bytes);
-    size_t count=mp3dec_ex_read(&decoder,(mp3d_sample_t*)stream,(size_t)bytes/2);
+    size_t count=pc_mode?pc_audio_read((int16_t*)stream,(size_t)bytes/2):mp3dec_ex_read(&decoder,(mp3d_sample_t*)stream,(size_t)bytes/2);
 #ifdef NL_DIAGNOSTIC
     if(count) SDL_AtomicAdd(&decoded_blocks,1);
 #endif
     Sint16 *samples=(Sint16*)stream;
     int gain=SDL_AtomicGet(&volume);
     for(size_t i=0;i<count;i++) samples[i]=(Sint16)((int)samples[i]*gain/100);
-    for(size_t i=0;i<count;i+=(size_t)channels) {
+    for(size_t i=0;i<(pc_mode?(size_t)bytes/2:count);i+=(size_t)channels) {
         float v=(float)samples[i]/32768.0f;
         if(channels==2 && i+1<count) v=(v+(float)samples[i+1]/32768.0f)*0.5f;
         pcm[pcm_position++%SV_FFT]=v;
     }
-    if(count<(size_t)bytes/2) SDL_AtomicSet(&finished,1);
+    if(!pc_mode && count<(size_t)bytes/2) SDL_AtomicSet(&finished,1);
 }
 static void stop_music(void) {
+    safety_stage(1);
     NL_EVENT("audio-close-before");
     if(audio) SDL_CloseAudioDevice(audio);
     NL_EVENT("audio-close-complete");
@@ -67,12 +73,16 @@ static void stop_music(void) {
     NL_EVENT_VALUE("decoded-blocks",SDL_AtomicGet(&decoded_blocks));
 #endif
     audio=0;
+    safety_stage(2);
+    if(pc_mode) pc_audio_stop();
+    pc_mode=0;
     if(decoder_open) mp3dec_ex_close(&decoder);
     decoder_open=0;
     if(music_file) fclose(music_file);
     music_file=NULL; playing=-1; paused=0;
     memset(pcm,0,sizeof(pcm)); pcm_position=0;
     SDL_AtomicSet(&finished,0);
+    safety_stage(0);
 }
 static int play_track(int index) {
     SDL_AudioSpec want,got;
@@ -104,6 +114,17 @@ static int play_track(int index) {
     snprintf(message,sizeof(message),"MP3 playback | %d Hz | %s",rate,channels==2?"Stereo":"Mono");
     SDL_PauseAudioDevice(audio,0); return 0;
 }
+static void play_pc(void) {
+    SDL_AudioSpec want,got;
+    stop_music();
+    if(pc_audio_start()) { snprintf(message,sizeof(message),"Cannot start PC Audio"); return; }
+    pc_mode=1; rate=48000; channels=2;
+    SDL_zero(want); want.freq=rate; want.channels=2;
+    want.format=AUDIO_S16SYS; want.samples=2048; want.callback=audio_callback;
+    audio=SDL_OpenAudioDevice(NULL,0,&want,&got,0);
+    if(!audio) { stop_music(); snprintf(message,sizeof(message),"Audio device unavailable"); return; }
+    SDL_PauseAudioDevice(audio,0);
+}
 static void toggle_pause(void) { if(audio) { paused=!paused; SDL_PauseAudioDevice(audio,paused); } }
 static void change_volume(int delta) {
     int v=SDL_AtomicGet(&volume)+delta;
@@ -115,7 +136,15 @@ static void draw_art(SDL_Surface *screen,SDL_Surface *art,int x,int y,int w,int 
     if((float)h/art->h<scale) scale=(float)h/art->h;
     int width=(int)(art->w*scale),height=(int)(art->h*scale);
     SDL_Rect dst={(x+w-width)*screen->w/1280,(y+(h-height)/2)*screen->h/720,width*screen->w/1280,height*screen->h/720};
-    SDL_BlitScaled(art,NULL,screen,&dst);
+    if(!art_cache || art_cache_source!=art || art_cache->w!=dst.w || art_cache->h!=dst.h) {
+        SDL_FreeSurface(art_cache);
+        art_cache=SDL_CreateRGBSurfaceWithFormat(0,dst.w,dst.h,32,SDL_PIXELFORMAT_ARGB8888);
+        if(!art_cache) return;
+        SDL_BlitScaled(art,NULL,art_cache,NULL);
+        if(!art->format->Amask) SDL_SetSurfaceBlendMode(art_cache,SDL_BLENDMODE_NONE);
+        art_cache_source=art;
+    }
+    SDL_BlitSurface(art_cache,NULL,screen,&dst);
 }
 enum { B_UP=1,B_DOWN=2,B_LEFT=4,B_RIGHT=8,B_X=16,B_O=32,B_START=64,B_L1=128,B_R1=256,B_L2=512,B_R2=1024 };
 static unsigned pad_buttons(void) {
@@ -164,7 +193,9 @@ int main(int argc,char **argv) {
     int settings_selection=0,update_pending=0;
     char upd_msg[160];
     unsigned previous=0; Uint32 repeat_at=0; float smooth[SV_BANDS]={0};
-    Gallery gallery;
+    Gallery gallery; FrameHealth health={0};
+    SpectrumPlan spectrum_plan={0};
+    Uint32 fps_start=0; unsigned fps_frames=0,fps=0;
 #ifdef NL_DIAGNOSTIC
     int diagnostic_gallery_sweep=0;
 #endif
@@ -217,7 +248,10 @@ int main(int argc,char **argv) {
         if(library.count) play_track(0);
     }
 #endif
+    if(safety_start()) { stop_music(); return 7; }
     while(running) {
+        int update_ran=0;
+        safety_beat();
         NL_TRACE("before-events");
         Uint32 start=SDL_GetTicks(); SDL_Event event;
         sysUtilCheckCallback();
@@ -242,7 +276,7 @@ int main(int argc,char **argv) {
         if(pressed&B_R2) change_volume(5);
         if(pressed&B_START) toggle_pause();
         if(pressed&B_L1) { if(playing>0) play_track(playing-1); }
-        if(pressed&B_R1) { if(playing>=0 && playing+1<library.count) play_track(playing+1); }
+        if(pressed&B_R1) { if(!pc_mode && playing>=0 && playing+1<library.count) play_track(playing+1); }
         if(focus && (section==1 || (section==2 && art_view==1))) {
             if(pressed&B_LEFT) gallery_step(&gallery,-1,start);
             if(pressed&B_RIGHT) gallery_step(&gallery,1,start);
@@ -267,13 +301,13 @@ int main(int argc,char **argv) {
         if(pressed&B_LEFT) {
             if(section==3 && focus && settings_selection==0) change_volume(-5);
             else if(section==3 && focus) {}
-            else if(section==0 && focus && view==0 && selection!=0 && selection!=4) selection--;
+            else if(section==0 && focus && view==0 && selection!=0 && selection!=4 && selection!=6) selection--;
             else focus=0;
         }
         if(pressed&B_RIGHT) {
             if(section==3 && focus && settings_selection==0) change_volume(5);
             else if(section==3 && focus) {}
-            else if(section==0 && focus && view==0 && selection!=3 && selection!=5) selection++;
+            else if(section==0 && focus && view==0 && selection!=3 && selection!=5 && selection!=6) selection++;
             else focus=1;
         }
         if(!focus) {
@@ -281,11 +315,11 @@ int main(int argc,char **argv) {
             if(pressed&B_DOWN) section=(section+1)%5;
             if(pressed&B_X) { if(section==4) running=0; else { focus=1; if(section==2) art_view=0; } }
         } else if(section==0) {
-            int rows=view==0?6:(view==1?entry_count+1:library.count);
+            int rows=view==0?7:(view==1?entry_count+1:library.count);
             if(rows>0) {
                 if(view==0) {
-                    if(pressed&B_UP) { if(selection>=4) selection=selection==4?0:2; else focus=0; }
-                    if(pressed&B_DOWN) selection=selection<2?4:5;
+                    if(pressed&B_UP) { if(selection==6) selection=4; else if(selection>=4) selection=selection==4?0:2; else focus=0; }
+                    if(pressed&B_DOWN) selection=selection>=4?6:(selection<2?4:5);
                 } else {
                     if(pressed&B_UP) selection=(selection+rows-1)%rows;
                     if(pressed&B_DOWN) selection=(selection+1)%rows;
@@ -295,7 +329,8 @@ int main(int argc,char **argv) {
                 if(view==0) {
                     if(selection<4) { source=selection; snprintf(folder,sizeof(folder),"%s",sources[source]); refresh_folder(folder,&entry_count,&selection); view=1; }
                     else if(selection==4) {view=2;selection=0;}
-                    else {section=1;}
+                    else if(selection==5) {section=1;}
+                    else { if(pc_mode) {stop_music();snprintf(message,sizeof(message),"PC Audio disconnected");} else play_pc(); }
                 } else if(view==1) {
                     if(selection==0) {scan_folder(folder);view=2;selection=0;}
                     else if(entries[selection-1].directory) {
@@ -355,7 +390,12 @@ int main(int argc,char **argv) {
             if(pressed&B_X && settings_selection==1 && !update_pending) { update_pending=1; snprintf(message,sizeof(message),"Checking for updates..."); }
         } else if(section==1 && (pressed&B_X)) toggle_pause();
         NL_INPUT(pressed,section,focus);
-        if(audio && SDL_AtomicGet(&finished)) {
+        if(pc_mode) {
+            static const char *status[]={"PC Audio stopped","Finding PC: start the Neon Lounge PC companion","PC Audio buffering...","PC Audio connected | Spotify / YouTube run on your PC"};
+            int state=pc_audio_status();
+            snprintf(message,sizeof(message),"%s",state<0?"PC disconnected. Choose PC Audio to stop, then reconnect.":status[state]);
+        }
+        if(audio && !pc_mode && SDL_AtomicGet(&finished)) {
             int next=playing+1;
             if(next<library.count) play_track(next); else {stop_music();snprintf(message,sizeof(message),"Playlist finished");}
         }
@@ -365,7 +405,8 @@ int main(int argc,char **argv) {
             for(unsigned i=0;i<SV_FFT;i++) snapshot[i]=pcm[(pcm_position+i)%SV_FFT];
             SDL_UnlockAudioDevice(audio);
         }
-        spectrum_analyze(snapshot,rate,&spectrum);
+        if(spectrum_plan.rate!=rate) spectrum_plan_init(&spectrum_plan,rate);
+        spectrum_analyze_plan(snapshot,&spectrum_plan,&spectrum);
         for(int i=0;i<SV_BANDS;i++) smooth[i]=smooth[i]*0.70f+spectrum.bands[i]*0.30f;
         ui_rect(screen,0,0,1280,720,0x08111f);
         if((section==1 && focus) || (section==2 && focus && art_view==1)) {
@@ -393,7 +434,7 @@ int main(int argc,char **argv) {
             ui_text(screen,270,30,42,0xf2f7ff,nav[section]);
             if(section==0) {
                 ui_text(screen,274,88,18,0x80b4c8,view==1?folder:"Your music | Internal HDD and USB");
-                const char *home[]={"Music folder","Internal HDD","USB 0","USB 1","Current playlist","Start visualizer"};
+                const char *home[]={"Music folder","Internal HDD","USB 0","USB 1","Current playlist","Start visualizer",pc_mode?"Disconnect PC Audio":"PC Audio - connect"};
                 if(view==0 && background) {
                     ui_rect(screen,270,190,950,280,0x101a29);
                     draw_art(screen,background,270,190,950,280);
@@ -401,13 +442,13 @@ int main(int argc,char **argv) {
                     ui_text(screen,294,284,42,0x35dfeb,"Your lounge.");
                     ui_text(screen,294,358,18,0x91b4c9,"MP3 playback and audio-reactive spectrum");
                 }
-                int count=view==0?6:(view==1?entry_count+1:library.count);
+                int count=view==0?7:(view==1?entry_count+1:library.count);
                 int first=selection>7?selection-7:0;
                 for(int row=first;row<count && row<first+9;row++) {
                     int y=138+(row-first)*44,x=266,w=960,pixels=26; char label[300];
                     if(view==0) {
-                        x=row<4?266+row*240:266+(row-4)*480;
-                        y=row<4?130:496; w=row<4?230:470; pixels=row<4?18:26;
+                        x=row<4?266+row*240:(row==6?266:266+(row-4)*480);
+                        y=row<4?130:(row==6?546:496); w=row<4?230:470; pixels=row<4?18:26;
                     }
                     if(view==0) snprintf(label,sizeof(label),"%s",home[row]);
                     else if(view==1) { if(!row) snprintf(label,sizeof(label),"[ Play this folder and subfolders ]"); else snprintf(label,sizeof(label),"%s%s",entries[row-1].directory?"[Folder] ":"",entries[row-1].name); }
@@ -466,14 +507,18 @@ int main(int argc,char **argv) {
                 ui_rect(screen,266,300,960,40,focus && settings_selection==1?0x195366:0x101a29);
                 ui_text(screen,280,304,26,0xffffff,"Check for updates");
                 ui_text(screen,280,360,18,0x91b4c9,"Neon Lounge " NL_VERSION " | Updates from GitHub");
-                ui_text(screen,280,386,18,0xc2ccd9,"MP3 playback | Read-only HDD and USB browsing");
+                ui_text(screen,280,386,18,0xc2ccd9,"MP3 playback | HDD, USB and PC Audio");
+                char perf[120]; snprintf(perf,sizeof(perf),"%u FPS | Target 60 | Auto exit: 10 seconds stalled / below 10 FPS",fps);
+                ui_text(screen,280,430,18,0x91b4c9,perf);
             } else if(section==4) ui_text(screen,280,150,26,0xffffff,"Press X to exit Neon Lounge");
         }
         ui_rect(screen,0,608,1280,112,0x101a29);
-        ui_text(screen,28,620,26,0xffffff,playing>=0?library.tracks[playing].name:"No track selected");
+        ui_text(screen,28,620,26,0xffffff,pc_mode?"PC Audio | Live stereo stream":(playing>=0?library.tracks[playing].name:"No track selected"));
         ui_text(screen,28,656,18,0x91b4c9,message);
         char volume_label[30]; snprintf(volume_label,sizeof(volume_label),"Volume %d%%",SDL_AtomicGet(&volume));
         ui_text(screen,1000,622,26,0x3de0ed,volume_label);
+        char fps_label[24]; snprintf(fps_label,sizeof(fps_label),"%u FPS",fps);
+        ui_text(screen,1000,656,18,0x91b4c9,fps_label);
         ui_text(screen,28,689,18,0x91b4c9,"X Select   O Back   START Pause   L1/R1 Track   L2/R2 Volume");
         NL_TRACE("before-present");
         if(display_present()) running=0;
@@ -484,21 +529,37 @@ int main(int argc,char **argv) {
         if(running) {
             if(update_pending==2) {
                 update_pending=0;
+                update_ran=1; safety_allow_seconds(650);
                 update_check_and_install(ASSETS,upd_msg,sizeof(upd_msg));
+                safety_allow_seconds(10);
                 snprintf(message,sizeof(message),"%s",upd_msg);
             } else if(update_pending==1) update_pending=2;
         }
         Uint32 elapsed=SDL_GetTicks()-start;
-        if(elapsed<16) SDL_Delay(16-elapsed);
+        if(!update_ran && frame_health_update(&health,elapsed)) {
+            FILE *f=fopen(ASSETS "safety-exit.log","w");
+            if(f) { fprintf(f,"Slow rendering: ten seconds below 10 FPS. Last frame %u ms.\n",elapsed); fclose(f); }
+            running=0;
+        }
+        /* Native RSX already waits for vblank; a second sleep can miss
+         * the next refresh. Only pace the non-vsync fallback here. */
+#ifndef NL_NATIVE_DISPLAY
+        static unsigned pace; unsigned budget=(++pace%3)==0?16:17;
+        if(elapsed<budget) SDL_Delay(budget-elapsed);
+#endif
+        fps_frames++;
+        if(start-fps_start>=1000) { fps=fps_frames*1000/(start-fps_start); fps_frames=0; fps_start=start; }
         NL_TRACE("delay-complete");
         NL_FRAME_COMPLETE();
     }
     NL_TRACE("before-cleanup");
+    safety_beat();
     stop_music();
     if(pad_init==PAD_OK) ioPadEnd();
     gallery_close(&gallery);
     update_net_shutdown();
-    SDL_FreeSurface(background); ui_font_close(); display_close(); runtime_shutdown();
+    SDL_FreeSurface(art_cache); SDL_FreeSurface(background); ui_font_close(); display_close(); runtime_shutdown();
+    safety_stop();
     SDL_Quit();
     NL_TRACE("cleanup-complete");
     NL_DIAGNOSTIC_FINISH();

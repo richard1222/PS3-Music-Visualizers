@@ -9,6 +9,8 @@ CONTENTID := UP0001-$(APPID)_00-NEONLOUNGE000001
 BUILDDIR := $(CURDIR)/build
 PKGFILES := $(CURDIR)/local/package
 ICON0 := $(CURDIR)/local/ICON0.PNG
+UPDATE_CA := $(PKGFILES)/USRDIR/certs/cacert.pem
+SFOXML := $(BUILDDIR)/neon-sfo.xml
 CPPFLAGS += -Isrc -Ithird_party/minimp3 -I$(PORTLIBS)/include/SDL2 -I$(PORTLIBS)/include -I$(PORTLIBS)/include/freetype2 $(LIBPSL1GHT_INC)
 CFLAGS += -std=gnu99 -O2 -Wall -Wextra -ffunction-sections -fdata-sections $(MACHDEP)
 CPPFLAGS += -MMD -MP
@@ -21,20 +23,30 @@ LDFLAGS += $(LIBPSL1GHT_LIB) -L$(PORTLIBS)/lib -Wl,--gc-sections
 LDFLAGS += -Wl,--wrap=gcmGetFlipStatus
 LDFLAGS += -Wl,--wrap=sysThreadCreate
 LDLIBS := -lSDL2 -lfreetype -lz -lgcm_sys -lrsx -lsysutil -lio -laudio -lrt -llv2 -lm -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lnet -lnetctl -lsysutil -lsysmodule -lm -lz
-OBJECTS := $(addprefix $(BUILDDIR)/,main.o spectrum.o ui.o library.o runtime_ps3.o wait_guard.o system_state.o display.o thread_stack.o clock_est.o visualizer.o gallery.o update.o)
-.PHONY: all pkg host-test
+OBJECTS := $(addprefix $(BUILDDIR)/,main.o spectrum.o ui.o library.o runtime_ps3.o wait_guard.o system_state.o display.o thread_stack.o clock_est.o visualizer.o gallery.o update.o pcm_ring.o pc_audio.o safety.o)
+.PHONY: all pkg host-test host-tls-test
+HOST_CURL_CFLAGS ?= $(shell pkg-config --cflags libcurl 2>/dev/null)
+HOST_CURL_LIBS ?= $(shell pkg-config --libs libcurl 2>/dev/null)
 all: $(TARGET).self
 pkg: $(TARGET).pkg
 $(TARGET).elf: $(OBJECTS) Makefile
 	$(CC) $(LDFLAGS) $(OBJECTS) $(LDLIBS) -o $@
 PACKAGE_ASSETS := $(shell find $(PKGFILES) -type f 2>/dev/null)
-$(TARGET).pkg: $(TARGET).self Makefile $(ICON0) $(PACKAGE_ASSETS)
+$(TARGET).pkg: $(TARGET).self Makefile $(ICON0) $(PACKAGE_ASSETS) $(UPDATE_CA) $(SFOXML)
+$(SFOXML): src/update.h tools/make_sfo_xml.py $(PS3DEV)/bin/sfo.xml
+	python3 tools/make_sfo_xml.py src/update.h $(PS3DEV)/bin/sfo.xml $@
+$(UPDATE_CA):
+	@echo "Missing update CA bundle. Run: python3 tools/fetch_update_ca.py $(PKGFILES)/USRDIR/certs"
+	@false
 # Assets are data, so do not search SDK executable/%.o implicit rules for them.
-$(PACKAGE_ASSETS): ;
+$(filter-out $(UPDATE_CA),$(PACKAGE_ASSETS)): ;
 $(BUILDDIR)/%.o: src/%.c Makefile
 	mkdir -p $(BUILDDIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 host-test:
+	mkdir -p build
+	gcc -std=c99 -Wall -Wextra -Werror -Isrc tests/test_stream.c src/pcm_ring.c -o build/test_stream
+	./build/test_stream
 	mkdir -p build
 	gcc -std=c99 -Wall -Wextra -Isrc tests/test_spectrum.c src/spectrum.c -lm -o build/test_spectrum
 	./build/test_spectrum
@@ -50,4 +62,8 @@ host-test:
 	./build/test_clock_est
 	gcc -std=c99 -Wall -Wextra -Werror -Isrc tests/test_update.c src/update.c -o build/test_update
 	./build/test_update
+host-tls-test:
+	mkdir -p build
+	gcc -std=c99 -Wall -Wextra -Werror -Isrc $(HOST_CURL_CFLAGS) tests/test_update_tls.c $(HOST_CURL_LIBS) -o build/test_update_tls
+	python3 tests/test_update_tls.py build/test_update_tls
 -include $(OBJECTS:.o=.d)

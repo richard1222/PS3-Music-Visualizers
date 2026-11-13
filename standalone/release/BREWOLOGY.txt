@@ -1,0 +1,9 @@
+Neon Lounge 1.05
+
+A PS3 music player with straight audio-reactive bars, custom artwork, volume controls and an EST clock.
+
+New: PC Audio streaming, faster rendering, an FPS counter and a safety exit for sustained stalls. Spotify or YouTube plays on your PC and streams to the PS3 using the companion.
+
+Also plays MP3s from HDD/USB and imports BMP artwork. Requires a homebrew-capable PS3; PC Audio needs a Windows PC on the same network.
+
+Source and companion: https://github.com/richard1222/PS3-Music-Visualizers

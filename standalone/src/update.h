@@ -1,7 +1,7 @@
 #ifndef NL_UPDATE_H
 #define NL_UPDATE_H
 #include <stddef.h>
-#define NL_VERSION "1.03"
+#define NL_VERSION "1.05"
 #define NL_UPDATE_URL "https://raw.githubusercontent.com/richard1222/PS3-Music-Visualizers/main/standalone/update.json"
 #define NL_UPDATE_MAX_PKG (64*1024*1024)
 #define NL_PACKAGES_DIR "/dev_hdd0/packages/"
