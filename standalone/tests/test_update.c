@@ -1,0 +1,46 @@
+#include "update.h"
+#include <stdio.h>
+#include <string.h>
+static int fails;
+#define CHECK(cond) do { if(!(cond)) { printf("FAIL line %d: %s\n",__LINE__,#cond); fails++; } } while(0)
+static void write_tmp(const char *name,const char *data) {
+    FILE *f=fopen(name,"wb");
+    if(data) fwrite(data,1,strlen(data),f);
+    fclose(f);
+}
+int main(void) {
+    int major,minor;
+    UpdateManifest man;
+    char hex[65];
+    CHECK(update_parse_version("1.00",&major,&minor)==0 && major==1 && minor==0);
+    CHECK(update_parse_version("2.10",&major,&minor)==0 && major==2 && minor==10);
+    CHECK(update_parse_version("1",&major,&minor)!=0);
+    CHECK(update_parse_version("1.",&major,&minor)!=0);
+    CHECK(update_parse_version("a.b",&major,&minor)!=0);
+    CHECK(update_parse_version("",&major,&minor)!=0);
+    CHECK(update_parse_version("1.00x",&major,&minor)!=0);
+    CHECK(update_is_newer("1.01")==1);
+    CHECK(update_is_newer("1.00")==0);
+    CHECK(update_is_newer("0.99")==0);
+    CHECK(update_is_newer("2.00")==1);
+    CHECK(update_is_newer("bad")==0);
+    CHECK(update_parse_manifest("{\"version\":\"1.01\",\"eboot_url\":\"https://example.com/EBOOT.BIN\",\"eboot_sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}",&man)==0);
+    CHECK(!strcmp(man.version,"1.01") && !strcmp(man.url,"https://example.com/EBOOT.BIN"));
+    CHECK(update_parse_manifest("{\n  \"eboot_sha256\" : \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\" ,\n  \"eboot_url\":\"https://example.com/EBOOT.BIN\",\n  \"version\":\"1.02\"\n}",&man)==0 && !strcmp(man.version,"1.02"));
+    CHECK(update_parse_manifest("{\"version\":\"1.01\",\"eboot_url\":\"https://example.com/EBOOT.BIN\"}",&man)!=0);
+    CHECK(update_parse_manifest("{\"version\":\"1.01\",\"eboot_url\":\"http://example.com/EBOOT.BIN\",\"eboot_sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}",&man)!=0);
+    CHECK(update_parse_manifest("{\"version\":\"1.01\",\"eboot_url\":\"https://example.com/EBOOT.BIN\",\"eboot_sha256\":\"abcd\"}",&man)!=0);
+    CHECK(update_parse_manifest("{\"version\":\"x\",\"eboot_url\":\"https://example.com/EBOOT.BIN\",\"eboot_sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}",&man)!=0);
+    write_tmp("test_update_empty.bin",NULL);
+    CHECK(update_sha256_file("test_update_empty.bin",hex)==0);
+    CHECK(!strcmp(hex,"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));
+    write_tmp("test_update_abc.bin","abc");
+    CHECK(update_sha256_file("test_update_abc.bin",hex)==0);
+    CHECK(!strcmp(hex,"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
+    CHECK(update_sha256_file("test_update_missing.bin",hex)!=0);
+    remove("test_update_empty.bin");
+    remove("test_update_abc.bin");
+    if(fails) { printf("Update tests: %d failures\n",fails); return 1; }
+    printf("Update: version compare, manifest parsing and SHA-256 checks passed\n");
+    return 0;
+}
