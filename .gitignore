@@ -11,3 +11,8 @@ source/art/
 *.sys
 *.zip
 .env
+standalone/build/
+standalone/*.elf
+standalone/*.self
+standalone/*.map
+standalone/third_party/noto/*.ttf
