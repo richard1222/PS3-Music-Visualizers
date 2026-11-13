@@ -19,7 +19,8 @@ int main(void) {
     CHECK(update_parse_version("a.b",&major,&minor)!=0);
     CHECK(update_parse_version("",&major,&minor)!=0);
     CHECK(update_parse_version("1.00x",&major,&minor)!=0);
-    CHECK(update_is_newer("1.03")==1);
+    CHECK(update_is_newer("1.04")==1);
+    CHECK(update_is_newer("1.03")==0);
     CHECK(update_is_newer("1.02")==0);
     CHECK(update_is_newer("1.01")==0);
     CHECK(update_is_newer("1.00")==0);

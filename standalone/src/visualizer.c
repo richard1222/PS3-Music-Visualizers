@@ -4,8 +4,8 @@
 void visualizer_draw(SDL_Surface *screen,const float bands[SV_BANDS],int64_t utc_seconds,Uint32 ticks) {
     (void)ticks;
     /* Original native straight spectrum; driven only by decoded PCM bands. */
-    ui_rect(screen,32,514,1216,80,0x0b1524);
-    ui_rect(screen,42,553,1196,2,0x24485d);
+    ui_rect(screen,32,524,1216,80,0x0b1524);
+    ui_rect(screen,42,563,1196,2,0x24485d);
     for(int i=0;i<64;i++) {
         float value=bands[i<32?i:63-i];
         if(!isfinite(value) || value<0) value=0;
@@ -13,7 +13,7 @@ void visualizer_draw(SDL_Surface *screen,const float bands[SV_BANDS],int64_t utc
         int length=1+(int)(value*34);
         unsigned r=40+i*3,g=220-i*2,b=235;
         Uint32 color=(r<<16)|(g<<8)|b;
-        ui_rect(screen,44+i*18,554-length,12,length*2,color);
+        ui_rect(screen,44+i*18,564-length,12,length*2,color);
     }
     char clock[20];clock_est_format(utc_seconds,clock,sizeof(clock));
     ui_rect(screen,920,16,328,86,0x0b1524);
