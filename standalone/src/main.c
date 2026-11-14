@@ -21,6 +21,7 @@
 #include "gallery.h"
 #include "update.h"
 #include "pc_audio.h"
+#include "ftp_server.h"
 #include "frame_health.h"
 #include "safety.h"
 SYS_PROCESS_PARAM(1001,0x100000);
@@ -391,15 +392,32 @@ int main(int argc,char **argv) {
                 }
             }
         } else if(section==3) {
-            if(pressed&B_UP) settings_selection=0;
-            if(pressed&B_DOWN) settings_selection=1;
-            if(pressed&B_X && settings_selection==1 && !update_pending) { update_pending=1; snprintf(message,sizeof(message),"Checking for updates..."); }
+            if(pressed&B_UP) settings_selection=(settings_selection+2)%3;
+            if(pressed&B_DOWN) settings_selection=(settings_selection+1)%3;
+            if(pressed&B_X) {
+                if(settings_selection==1) {
+                    int ftp_state=ftp_server_status();
+                    if(ftp_state==0 || ftp_state==-1) {
+                        if(ftp_server_start(ASSETS "art/gallery")) snprintf(message,sizeof(message),"FTP server could not start");
+                        else snprintf(message,sizeof(message),"FTP server starting...");
+                    } else {
+                        ftp_server_stop();
+                        snprintf(message,sizeof(message),"FTP server off");
+                    }
+                } else if(settings_selection==2 && !update_pending) { update_pending=1; snprintf(message,sizeof(message),"Checking for updates..."); }
+            }
         } else if(section==1 && (pressed&B_X)) toggle_pause();
         NL_INPUT(pressed,section,focus);
         if(pc_mode) {
             static const char *status[]={"PC Audio stopped","Finding PC: start the Neon Lounge PC companion","PC Audio buffering...","PC Audio connected | Spotify / YouTube run on your PC"};
             int state=pc_audio_status();
             snprintf(message,sizeof(message),"%s",state<0?"PC disconnected. Choose PC Audio to stop, then reconnect.":status[state]);
+        }
+        if(ftp_take_gallery_dirty()) {
+            /* The FTP thread only writes files; the gallery reload runs
+             * here on the main thread, like Add artwork does. */
+            gallery_close(&gallery); gallery_open(&gallery,ASSETS "art/gallery");
+            snprintf(message,sizeof(message),"Gallery updated via FTP (%d / %d slides)",gallery.loaded,NL_GALLERY_SLIDES);
         }
         if(audio && !pc_mode && SDL_AtomicGet(&finished)) {
             int next=playing+1;
@@ -507,17 +525,31 @@ int main(int argc,char **argv) {
                     ui_text(screen,280,574,18,0x91b4c9,gallery_label);
                 }
             } else if(section==3) {
+                char ftp_label[64],ftp_info[160],ftp_addr[48];
+                int ftp_state=ftp_server_status();
                 ui_rect(screen,266,138,960,40,focus && settings_selection==0?0x195366:0x101a29);
                 ui_text(screen,280,142,26,0xffffff,"Playback volume");
                 ui_rect(screen,280,200,660,12,0x294054); ui_rect(screen,280,200,SDL_AtomicGet(&volume)*660/100,12,0x32d5ed);
                 ui_text(screen,280,250,18,0xc2ccd9,"Left / Right or L2 / R2 to adjust");
-                ui_rect(screen,266,300,960,40,focus && settings_selection==1?0x195366:0x101a29);
-                ui_text(screen,280,304,26,0xffffff,"Check for updates");
-                ui_text(screen,280,360,18,0x91b4c9,"Neon Lounge " NL_VERSION " | Updates from GitHub");
-                ui_text(screen,280,386,18,0xc2ccd9,"MP3 playback | HDD, USB and PC Audio");
+                snprintf(ftp_label,sizeof(ftp_label),"FTP Server: %s",ftp_state==2?"On":(ftp_state==1?"Starting...":(ftp_state==-1?"Error":"Off")));
+                ui_rect(screen,266,290,960,40,focus && settings_selection==1?0x195366:0x101a29);
+                ui_text(screen,280,294,26,0xffffff,ftp_label);
+                if(ftp_state==2 && ftp_server_address(ftp_addr,sizeof(ftp_addr))==0)
+                    snprintf(ftp_info,sizeof(ftp_info),"Upload BMP pictures from a PC: %s (anonymous login)",ftp_addr);
+                else if(ftp_state==1)
+                    snprintf(ftp_info,sizeof(ftp_info),"Starting the FTP server...");
+                else if(ftp_state==-1)
+                    snprintf(ftp_info,sizeof(ftp_info),"FTP server could not start - check the network connection");
+                else
+                    snprintf(ftp_info,sizeof(ftp_info),"Turn on to upload pictures from a PC, no USB drive needed");
+                ui_text(screen,280,340,18,0x91b4c9,ftp_info);
+                ui_rect(screen,266,380,960,40,focus && settings_selection==2?0x195366:0x101a29);
+                ui_text(screen,280,384,26,0xffffff,"Check for updates");
+                ui_text(screen,280,434,18,0x91b4c9,"Neon Lounge " NL_VERSION " | Updates from GitHub");
+                ui_text(screen,280,460,18,0xc2ccd9,"MP3 playback | HDD, USB and PC Audio");
                 char perf[120]; snprintf(perf,sizeof(perf),"%u FPS | Target 60 | Auto exit: 10 seconds stalled / below 10 FPS",fps);
-                ui_text(screen,280,430,18,0x91b4c9,perf);
-                if(update_notice[0]) ui_text(screen,280,458,18,0xffc94d,update_notice);
+                ui_text(screen,280,504,18,0x91b4c9,perf);
+                if(update_notice[0]) ui_text(screen,280,532,18,0xffc94d,update_notice);
             } else if(section==4) ui_text(screen,280,150,26,0xffffff,"Press X to exit Neon Lounge");
         }
         ui_rect(screen,0,608,1280,112,0x101a29);
@@ -580,6 +612,7 @@ int main(int argc,char **argv) {
     stop_music();
     if(pad_init==PAD_OK) ioPadEnd();
     gallery_close(&gallery);
+    ftp_server_stop();
     update_net_shutdown();
     SDL_FreeSurface(art_cache); SDL_FreeSurface(background); ui_font_close(); display_close(); runtime_shutdown();
     safety_stop();

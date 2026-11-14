@@ -23,7 +23,7 @@ LDFLAGS += $(LIBPSL1GHT_LIB) -L$(PORTLIBS)/lib -Wl,--gc-sections
 LDFLAGS += -Wl,--wrap=gcmGetFlipStatus
 LDFLAGS += -Wl,--wrap=sysThreadCreate
 LDLIBS := -lSDL2 -lfreetype -lz -lgcm_sys -lrsx -lsysutil -lio -laudio -lrt -llv2 -lm -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lnet -lnetctl -lsysutil -lsysmodule -lm -lz
-OBJECTS := $(addprefix $(BUILDDIR)/,main.o spectrum.o ui.o library.o runtime_ps3.o wait_guard.o system_state.o display.o thread_stack.o clock_est.o visualizer.o gallery.o update.o pcm_ring.o pc_audio.o safety.o)
+OBJECTS := $(addprefix $(BUILDDIR)/,main.o spectrum.o ui.o library.o runtime_ps3.o wait_guard.o system_state.o display.o thread_stack.o clock_est.o visualizer.o gallery.o update.o pcm_ring.o pc_audio.o safety.o ftp_server.o)
 .PHONY: all pkg host-test host-tls-test
 HOST_CURL_CFLAGS ?= $(shell pkg-config --cflags libcurl 2>/dev/null)
 HOST_CURL_LIBS ?= $(shell pkg-config --libs libcurl 2>/dev/null)
@@ -62,6 +62,8 @@ host-test:
 	./build/test_clock_est
 	gcc -std=c99 -Wall -Wextra -Werror -Isrc tests/test_update.c src/update.c -o build/test_update
 	./build/test_update
+	gcc -std=c99 -Wall -Wextra -Werror -Isrc tests/test_ftp_server.c src/ftp_server.c -o build/test_ftp_server
+	./build/test_ftp_server
 host-tls-test:
 	mkdir -p build
 	gcc -std=c99 -Wall -Wextra -Werror -Isrc $(HOST_CURL_CFLAGS) tests/test_update_tls.c $(HOST_CURL_LIBS) -o build/test_update_tls

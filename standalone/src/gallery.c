@@ -150,6 +150,19 @@ static int gallery_fail(char *err,size_t size,const char *msg) {
     if(err && size) snprintf(err,size,"%s",msg);
     return -1;
 }
+/* One shared artwork check for Add artwork and the FTP server: the file
+ * must be a BMP SDL can load, 1280x720 or smaller. */
+int gallery_validate_bmp(const char *path,char *err,size_t err_size) {
+    SDL_Surface *image;
+    if(!path || !*path) return gallery_fail(err,err_size,"Not a supported BMP (1280x720 or smaller).");
+    image=SDL_LoadBMP(path);
+    if(!image || image->w<1 || image->h<1 || image->w>1280 || image->h>720) {
+        if(image) SDL_FreeSurface(image);
+        return gallery_fail(err,err_size,"Not a supported BMP (1280x720 or smaller).");
+    }
+    SDL_FreeSurface(image);
+    return 0;
+}
 static const char *gallery_basename(const char *path) {
     const char *s=strrchr(path,'/');
     return s?s+1:path;
@@ -162,7 +175,6 @@ int gallery_add(Gallery *g,const char *src_path,char *err,size_t err_size) {
     long total=0;
     int ok=1;
     size_t got;
-    SDL_Surface *image;
     if(!g || !src_path || !*src_path || !g->folder[0]) return gallery_fail(err,err_size,"Gallery unavailable.");
     name=gallery_basename(src_path);
     if(!*name || !strcmp(name,".") || !strcmp(name,"..") || strchr(name,'\\') || strlen(name)>=256)
@@ -185,13 +197,7 @@ int gallery_add(Gallery *g,const char *src_path,char *err,size_t err_size) {
     if(ferror(in)) ok=0;
     fclose(in); fclose(out);
     if(!ok) { remove(dest); return gallery_fail(err,err_size,"Picture is too large or could not be copied (8 MB max)."); }
-    image=SDL_LoadBMP(dest);
-    if(!image || image->w<1 || image->h<1 || image->w>1280 || image->h>720) {
-        if(image) SDL_FreeSurface(image);
-        remove(dest);
-        return gallery_fail(err,err_size,"Not a supported BMP (1280x720 or smaller).");
-    }
-    SDL_FreeSurface(image);
+    if(gallery_validate_bmp(dest,err,err_size)) { remove(dest); return -1; }
     snprintf(folder,sizeof(folder),"%s",g->folder);
     gallery_close(g); gallery_open(g,folder);
     return 0;

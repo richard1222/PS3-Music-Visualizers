@@ -23,6 +23,7 @@ void gallery_step(Gallery *gallery,int direction,Uint32 now);
 void gallery_tick(Gallery *gallery,Uint32 now);
 void gallery_draw(Gallery *gallery,SDL_Surface *screen,int x,int y,int w,int h,Uint32 now);
 const char *gallery_title(const Gallery *gallery);
+int gallery_validate_bmp(const char *path,char *err,size_t err_size);
 int gallery_add(Gallery *gallery,const char *src_path,char *err,size_t err_size);
 int gallery_remove_current(Gallery *gallery,char *err,size_t err_size);
 #endif
