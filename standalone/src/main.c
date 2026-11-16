@@ -7,6 +7,7 @@
 #include <string.h>
 #include <limits.h>
 #include <time.h>
+#include <math.h>
 #define MINIMP3_NO_STDIO
 #define MINIMP3_NO_SIMD
 #define MINIMP3_ONLY_MP3
@@ -181,6 +182,52 @@ static void scan_folder(const char *folder) {
     stop_music(); snprintf(message,sizeof(message),"Scanning MP3 files...");
     library_scan(&library,folder);
     snprintf(message,sizeof(message),"%d MP3 tracks%s%s",library.count,library.truncated?" (scan limit reached)":"",library.errors?" (some folders unavailable)":"");
+}
+/* --- GameCube menu reskin (visual only) ---------------------------------
+ * Indigo/purple palette, chunky lavender tiles with a bright focus glow,
+ * and the menu's rotating wireframe cube, all drawn with the existing
+ * ui_rect/ui_line primitives. No layout logic or navigation changed. */
+static Uint32 gc_shade(Uint32 a,Uint32 b,int step,int steps) {
+    int ar=(int)((a>>16)&255),ag=(int)((a>>8)&255),ab=(int)(a&255);
+    int br=(int)((b>>16)&255),bg=(int)((b>>8)&255),bb=(int)(b&255);
+    if(steps<1) steps=1;
+    return ((Uint32)(ar+(br-ar)*step/steps)<<16)|((Uint32)(ag+(bg-ag)*step/steps)<<8)|(Uint32)(ab+(bb-ab)*step/steps);
+}
+static void draw_gc_background(SDL_Surface *screen) {
+    const int bands=24;
+    for(int i=0;i<bands;i++)
+        ui_rect(screen,0,i*720/bands,1280,720/bands+1,gc_shade(0x251a52,0x5546ad,i,bands-1));
+}
+static void draw_gc_tile(SDL_Surface *screen,int x,int y,int w,int h,int selected) {
+    if(selected) {
+        ui_rect(screen,x-3,y-3,w+6,h+6,0xe6e1ff);
+        ui_rect(screen,x,y,w,h,0x6c5ce0);
+    } else {
+        ui_rect(screen,x,y,w,h,0x46348f);
+        ui_rect(screen,x,y,w,3,0x6a5cc0);
+    }
+}
+static void draw_gc_cube(SDL_Surface *screen,int cx,int cy,int size,Uint32 ticks,Uint32 rgb) {
+    static const float verts[8][3]={
+        {-1,-1,-1},{1,-1,-1},{1,1,-1},{-1,1,-1},
+        {-1,-1,1},{1,-1,1},{1,1,1},{-1,1,1}
+    };
+    static const int edges[12][2]={
+        {0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},
+        {0,4},{1,5},{2,6},{3,7}
+    };
+    float a=ticks*0.0004f,ca=cosf(a),sa=sinf(a);
+    const float tilt=0.6f,ct=cosf(tilt),st=sinf(tilt);
+    int px[8],py[8];
+    for(int i=0;i<8;i++) {
+        float x=verts[i][0],y=verts[i][1],z=verts[i][2];
+        float rx=x*ca+z*sa,rz=-x*sa+z*ca;
+        float ry=y*ct-rz*st;
+        px[i]=cx+(int)(rx*size);
+        py[i]=cy+(int)(ry*size);
+    }
+    for(int i=0;i<12;i++)
+        ui_line(screen,px[edges[i][0]],py[edges[i][0]],px[edges[i][1]],py[edges[i][1]],rgb);
 }
 int main(int argc,char **argv) {
     (void)argc; (void)argv;
@@ -432,7 +479,7 @@ int main(int argc,char **argv) {
         if(spectrum_plan.rate!=rate) spectrum_plan_init(&spectrum_plan,rate);
         spectrum_analyze_plan(snapshot,&spectrum_plan,&spectrum);
         for(int i=0;i<SV_BANDS;i++) smooth[i]=smooth[i]*0.70f+spectrum.bands[i]*0.30f;
-        ui_rect(screen,0,0,1280,720,0x08111f);
+        draw_gc_background(screen);
         if((section==1 && focus) || (section==2 && focus && art_view==1)) {
 #ifdef NL_DIAGNOSTIC
             /* Offline autoplay probe exercises every loaded slide while
@@ -446,26 +493,31 @@ int main(int argc,char **argv) {
             if(gallery.loaded) gallery_draw(&gallery,screen,0,0,1280,720,start);
             else if(background) SDL_BlitScaled(background,NULL,screen,NULL);
             if(section==1) visualizer_draw(screen,smooth,(int64_t)time(NULL),start);
-            ui_rect(screen,24,18,650,42,0x0b1524);
+            ui_rect(screen,24,18,650,42,0x241a4d);
             ui_text(screen,38,24,26,0xf2f7ff,gallery_title(&gallery));
         } else {
-            ui_rect(screen,0,0,230,635,0x101d30);
-            ui_text(screen,26,30,26,0x32d5ed,"NEON LOUNGE");
+            ui_rect(screen,0,0,230,635,0x31236e);
+            ui_text(screen,26,26,26,0xd9d2ff,"NEON LOUNGE");
+            draw_gc_cube(screen,115,86,15,start,0xc9bfff);
             for(int i=0;i<5;i++) {
-                if(section==i) { ui_rect(screen,14,114+i*72,202,54,focus?0x263c50:0x156e83); ui_rect(screen,14,114+i*72,4,54,0x35dfeb); }
+                if(section==i) {
+                    if(focus) ui_rect(screen,11,111+i*72,208,60,0xe6e1ff);
+                    ui_rect(screen,14,114+i*72,202,54,focus?0x6c5ce0:0x4b3a9e);
+                    ui_rect(screen,14,114+i*72,4,54,0xd9d2ff);
+                }
                 ui_text(screen,36,124+i*72,26,0xf2f7ff,nav[i]);
             }
             ui_text(screen,270,30,42,0xf2f7ff,nav[section]);
             if(update_notice[0]) ui_text(screen,880,36,26,0xffc94d,update_notice);
             if(section==0) {
-                ui_text(screen,274,88,18,0x80b4c8,view==1?folder:"Your music | Internal HDD and USB");
+                ui_text(screen,274,88,18,0xb3a6e8,view==1?folder:"Your music | Internal HDD and USB");
                 const char *home[]={"Music folder","Internal HDD","USB 0","USB 1","Current playlist","Start visualizer",pc_mode?"Disconnect PC Audio":"PC Audio - connect"};
                 if(view==0 && background) {
-                    ui_rect(screen,270,190,950,280,0x101a29);
+                    ui_rect(screen,270,190,950,280,0x31236e);
                     draw_art(screen,background,270,190,950,280);
                     ui_text(screen,294,232,42,0xffffff,"Your music.");
-                    ui_text(screen,294,284,42,0x35dfeb,"Your lounge.");
-                    ui_text(screen,294,358,18,0x91b4c9,"MP3 playback and audio-reactive spectrum");
+                    ui_text(screen,294,284,42,0xc9bfff,"Your lounge.");
+                    ui_text(screen,294,358,18,0xb3a6e8,"MP3 playback and audio-reactive spectrum");
                 }
                 int count=view==0?7:(view==1?entry_count+1:library.count);
                 int first=selection>7?selection-7:0;
@@ -478,61 +530,61 @@ int main(int argc,char **argv) {
                     if(view==0) snprintf(label,sizeof(label),"%s",home[row]);
                     else if(view==1) { if(!row) snprintf(label,sizeof(label),"[ Play this folder and subfolders ]"); else snprintf(label,sizeof(label),"%s%s",entries[row-1].directory?"[Folder] ":"",entries[row-1].name); }
                     else snprintf(label,sizeof(label),"%s",library.tracks[row].name);
-                    ui_rect(screen,x,y,w,40,focus && selection==row?0x195366:0x15283c);
-                    ui_text(screen,x+14,y+4,pixels,0xf4f6ff,label);
+                    draw_gc_tile(screen,x,y,w,view==0?(row<4?56:48):40,focus && selection==row);
+                    ui_text(screen,x+14,y+(view==0?(row<4?16:9):4),pixels,0xf4f6ff,label);
                 }
-                if(!count) ui_text(screen,280,170,26,0xc2ccd9,"No MP3 tracks. Browse a source folder first.");
+                if(!count) ui_text(screen,280,170,26,0xd8d2f2,"No MP3 tracks. Browse a source folder first.");
             } else if(section==1 || section==2) {
                 if(section==2 && focus && art_view==0) {
                     const char *opts[]={"View gallery","Add artwork","Remove artwork","Get pictures"};
                     char gallery_label[120];
                     for(int i=0;i<4;i++) {
-                        ui_rect(screen,266,138+i*44,960,40,art_selection==i?0x195366:0x15283c);
+                        draw_gc_tile(screen,266,138+i*44,960,40,art_selection==i);
                         ui_text(screen,280,142+i*44,26,0xf4f6ff,opts[i]);
                     }
-                    ui_text(screen,280,340,18,0x91b4c9,"Add: BMP pictures, 1280x720 or smaller, from HDD or USB");
-                    ui_text(screen,280,366,18,0x91b4c9,"Remove: current artwork is moved to a backup folder");
+                    ui_text(screen,280,340,18,0xb3a6e8,"Add: BMP pictures, 1280x720 or smaller, from HDD or USB");
+                    ui_text(screen,280,366,18,0xb3a6e8,"Remove: current artwork is moved to a backup folder");
                     snprintf(gallery_label,sizeof(gallery_label),"%d / %d slides loaded | %s",gallery.loaded,NL_GALLERY_SLIDES,gallery_title(&gallery));
-                    ui_text(screen,280,400,18,0x91b4c9,gallery_label);
+                    ui_text(screen,280,400,18,0xb3a6e8,gallery_label);
                 } else if(section==2 && focus && art_view==2) {
                     int count=art_browse_view==0?4:art_count;
                     int first=art_sel>7?art_sel-7:0;
-                    ui_text(screen,274,88,18,0x80b4c8,art_browse_view==1?art_folder:"Choose a source to browse for BMP pictures");
+                    ui_text(screen,274,88,18,0xb3a6e8,art_browse_view==1?art_folder:"Choose a source to browse for BMP pictures");
                     for(int row=first;row<count && row<first+9;row++) {
                         int y=138+(row-first)*44; char label[300];
                         if(art_browse_view==0) snprintf(label,sizeof(label),"%s",sources[row]);
                         else snprintf(label,sizeof(label),"%s%s",art_entries[row].directory?"[Folder] ":"",art_entries[row].name);
-                        ui_rect(screen,266,y,960,40,art_sel==row?0x195366:0x15283c);
+                        draw_gc_tile(screen,266,y,960,40,art_sel==row);
                         ui_text(screen,280,y+4,26,0xf4f6ff,label);
                     }
-                    if(!count) ui_text(screen,280,170,26,0xc2ccd9,"No BMP pictures here. Browse another folder.");
+                    if(!count) ui_text(screen,280,170,26,0xd8d2f2,"No BMP pictures here. Browse another folder.");
                 } else if(section==2 && focus && art_view==3) {
                     const char *sites[]={"X - https://x.com","DeviantArt - https://www.deviantart.com","Pixiv - https://www.pixiv.net","ArtStation - https://www.artstation.com","Zerochan - https://www.zerochan.net","Pinterest - https://www.pinterest.com"};
                     ui_text(screen,280,140,26,0xffffff,"Get pictures from these sites:");
-                    for(int i=0;i<6;i++) ui_text(screen,280,180+i*36,26,0x32d5ed,sites[i]);
-                    ui_text(screen,280,420,18,0x91b4c9,"Save a picture on your PC or phone, convert it to BMP");
-                    ui_text(screen,280,446,18,0x91b4c9,"(1280x720 or smaller), copy it to USB, then Add artwork.");
-                    ui_text(screen,280,472,18,0x91b4c9,"Use artwork you have permission to use.");
+                    for(int i=0;i<6;i++) ui_text(screen,280,180+i*36,26,0xc9bfff,sites[i]);
+                    ui_text(screen,280,420,18,0xb3a6e8,"Save a picture on your PC or phone, convert it to BMP");
+                    ui_text(screen,280,446,18,0xb3a6e8,"(1280x720 or smaller), copy it to USB, then Add artwork.");
+                    ui_text(screen,280,472,18,0xb3a6e8,"Use artwork you have permission to use.");
                 } else {
                     if(gallery.loaded) gallery_draw(&gallery,screen,270,135,950,400,start);
                     else if(background) {
                         draw_art(screen,background,270,135,950,400);
                     }
-                    if(section==2) ui_text(screen,280,540,18,0x32d5ed,"X Artwork options | Add / Remove / Get pictures");
-                    else ui_text(screen,280,540,18,0x32d5ed,"X Fullscreen | O Back | Left/Right Artwork | Auto: 12 seconds");
+                    if(section==2) ui_text(screen,280,540,18,0xc9bfff,"X Artwork options | Add / Remove / Get pictures");
+                    else ui_text(screen,280,540,18,0xc9bfff,"X Fullscreen | O Back | Left/Right Artwork | Auto: 12 seconds");
                     char gallery_label[120];
                     snprintf(gallery_label,sizeof(gallery_label),"%d / %d slides loaded | %s",gallery.loaded,NL_GALLERY_SLIDES,gallery_title(&gallery));
-                    ui_text(screen,280,574,18,0x91b4c9,gallery_label);
+                    ui_text(screen,280,574,18,0xb3a6e8,gallery_label);
                 }
             } else if(section==3) {
                 char ftp_label[64],ftp_info[160],ftp_addr[48];
                 int ftp_state=ftp_server_status();
-                ui_rect(screen,266,138,960,40,focus && settings_selection==0?0x195366:0x101a29);
+                draw_gc_tile(screen,266,138,960,40,focus && settings_selection==0);
                 ui_text(screen,280,142,26,0xffffff,"Playback volume");
-                ui_rect(screen,280,200,660,12,0x294054); ui_rect(screen,280,200,SDL_AtomicGet(&volume)*660/100,12,0x32d5ed);
-                ui_text(screen,280,250,18,0xc2ccd9,"Left / Right or L2 / R2 to adjust");
+                ui_rect(screen,280,200,660,12,0x2a1d63); ui_rect(screen,280,200,SDL_AtomicGet(&volume)*660/100,12,0xc9bfff);
+                ui_text(screen,280,250,18,0xd8d2f2,"Left / Right or L2 / R2 to adjust");
                 snprintf(ftp_label,sizeof(ftp_label),"FTP Server: %s",ftp_state==2?"On":(ftp_state==1?"Starting...":(ftp_state==-1?"Error":"Off")));
-                ui_rect(screen,266,290,960,40,focus && settings_selection==1?0x195366:0x101a29);
+                draw_gc_tile(screen,266,290,960,40,focus && settings_selection==1);
                 ui_text(screen,280,294,26,0xffffff,ftp_label);
                 if(ftp_state==2 && ftp_server_address(ftp_addr,sizeof(ftp_addr))==0)
                     snprintf(ftp_info,sizeof(ftp_info),"Upload BMP pictures from a PC: %s (anonymous login)",ftp_addr);
@@ -542,24 +594,24 @@ int main(int argc,char **argv) {
                     snprintf(ftp_info,sizeof(ftp_info),"FTP server could not start - check the network connection");
                 else
                     snprintf(ftp_info,sizeof(ftp_info),"Turn on to upload pictures from a PC, no USB drive needed");
-                ui_text(screen,280,340,18,0x91b4c9,ftp_info);
-                ui_rect(screen,266,380,960,40,focus && settings_selection==2?0x195366:0x101a29);
+                ui_text(screen,280,340,18,0xb3a6e8,ftp_info);
+                draw_gc_tile(screen,266,380,960,40,focus && settings_selection==2);
                 ui_text(screen,280,384,26,0xffffff,"Check for updates");
-                ui_text(screen,280,434,18,0x91b4c9,"Neon Lounge " NL_VERSION " | Updates from GitHub");
-                ui_text(screen,280,460,18,0xc2ccd9,"MP3 playback | HDD, USB and PC Audio");
+                ui_text(screen,280,434,18,0xb3a6e8,"Neon Lounge " NL_VERSION " | Updates from GitHub");
+                ui_text(screen,280,460,18,0xd8d2f2,"MP3 playback | HDD, USB and PC Audio");
                 char perf[120]; snprintf(perf,sizeof(perf),"%u FPS | Target 60 | Auto exit: 10 seconds stalled / below 10 FPS",fps);
-                ui_text(screen,280,504,18,0x91b4c9,perf);
+                ui_text(screen,280,504,18,0xb3a6e8,perf);
                 if(update_notice[0]) ui_text(screen,280,532,18,0xffc94d,update_notice);
             } else if(section==4) ui_text(screen,280,150,26,0xffffff,"Press X to exit Neon Lounge");
         }
-        ui_rect(screen,0,608,1280,112,0x101a29);
+        ui_rect(screen,0,608,1280,112,0x31236e);
         ui_text(screen,28,620,26,0xffffff,pc_mode?"PC Audio | Live stereo stream":(playing>=0?library.tracks[playing].name:"No track selected"));
-        ui_text(screen,28,656,18,0x91b4c9,message);
+        ui_text(screen,28,656,18,0xb3a6e8,message);
         char volume_label[30]; snprintf(volume_label,sizeof(volume_label),"Volume %d%%",SDL_AtomicGet(&volume));
-        ui_text(screen,1000,622,26,0x3de0ed,volume_label);
+        ui_text(screen,1000,622,26,0xc9bfff,volume_label);
         char fps_label[24]; snprintf(fps_label,sizeof(fps_label),"%u FPS",fps);
-        ui_text(screen,1000,656,18,0x91b4c9,fps_label);
-        ui_text(screen,28,689,18,0x91b4c9,"X Select   O Back   START Pause   L1/R1 Track   L2/R2 Volume");
+        ui_text(screen,1000,656,18,0xb3a6e8,fps_label);
+        ui_text(screen,28,689,18,0xb3a6e8,"X Select   O Back   START Pause   L1/R1 Track   L2/R2 Volume");
         NL_TRACE("before-present");
         if(display_present()) running=0;
         NL_TRACE("present-complete");
