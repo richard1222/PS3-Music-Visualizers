@@ -1,0 +1,8 @@
+# PRIVATE decoder material (from the PCStream-PS3 project) - it must
+# never be committed to this repository or included in any upload.
+# The local test build links these files; that is their only role here.
+src/ps3vdec.c
+src/ps3vdec.h
+src/vdecex.c
+src/vdecex.h
+src/applog.h

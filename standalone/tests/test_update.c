@@ -19,8 +19,15 @@ int main(void) {
     CHECK(update_parse_version("a.b",&major,&minor)!=0);
     CHECK(update_parse_version("",&major,&minor)!=0);
     CHECK(update_parse_version("1.00x",&major,&minor)!=0);
-    CHECK(update_is_newer("1.09")==1);
-    CHECK(update_is_newer("1.08")==0);
+    CHECK(update_is_newer("1.19")==1);
+    CHECK(update_is_newer("1.18")==0);
+    CHECK(update_is_newer("1.17")==0);
+    CHECK(update_is_newer("1.16")==0);
+    CHECK(update_is_newer("1.15")==0);
+    CHECK(update_is_newer("1.14")==0);
+    CHECK(update_is_newer("1.13")==0);
+    CHECK(update_is_newer("1.12")==0);
+    CHECK(update_is_newer("1.09")==0);
     CHECK(update_is_newer("1.07")==0);
     CHECK(update_is_newer("1.06")==0);
     CHECK(update_is_newer("1.05")==0);

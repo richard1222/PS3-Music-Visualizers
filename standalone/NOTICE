@@ -1,0 +1,62 @@
+Neon Lounge
+===========
+
+This application includes third-party components. The notices below are
+kept with the source tree and in the release credits (Settings screen).
+
+YouTube extractor (src/youtube.c, src/yt_net.h fetchHttp shape)
+---------------------------------------------------------------
+Portions of src/youtube.c are a port of the YouTube extractor from
+TEE Vanced PS3 by TheErsysEnding (github.com/TheErsysEnding/TEE-Vanced-PS3),
+which is part of the ps3-dev / Yo! Player tree by Mohammed Asif ("mohasi",
+github.com/mohasi/ps3-dev). The string helpers inlined in src/youtube.c
+(strCopy, urlDecode, toLowerChar) are likewise from that tree's
+string-utilities.h, and the fetchHttp/fetchHttpCapturing signatures in
+src/yt_net.h follow its http.h.
+
+Licensed under the Apache License, Version 2.0. A copy of the license is
+in third_party/youtube/LICENSE.
+
+Changes made for Neon Lounge (the port, src/youtube.c as shipped here):
+- Transport retargeted: upstream's cellHttp/BearSSL backends are replaced
+  by Neon Lounge's own libcurl + mbedTLS stack (src/yt_net.c), reusing the
+  update checker's CA bundle and HTTPS-only policy.
+- The signed-in account feeds, channel pages and live pages are not
+  ported (anonymous use only); the content region is fixed to "US";
+  subtitle languages are all treated as displayable (captions are parsed
+  but not shown in this version).
+- The visitor-session cache writes atomically (temp file + rename).
+- App services (settings, account, channel avatars, quiet-thread logging)
+  are replaced by small local shims at the top of the file.
+
+YouTube playback: fMP4 demuxer and ranged video source
+------------------------------------------------------
+The fragmented-MP4 demuxer (src/demux-mp4.c, src/mp4.c, src/h264.c and
+the shared access-unit types in src/demux-types.h), the Annex-B AU
+builder in src/yt_demux.c, and the ranged video source design
+(src/video-source.c: query-string byte ranges for googlevideo, a
+prefetch window ahead of the reader) are ported from the ps3-dev /
+Yo! Player tree by Mohammed Asif ("mohasi", github.com/mohasi/ps3-dev),
+also via TEE Vanced PS3 by TheErsysEnding. The ADTS header layout in
+src/yt_adts.c matches that tree's buildAdtsHeader, and the
+audio-master sync design in src/yt_sync.c follows its video player.
+
+Licensed under the Apache License, Version 2.0 (copy in
+third_party/youtube/LICENSE).
+
+Changes made for Neon Lounge: the transport is Neon Lounge's own
+libcurl + mbedTLS stack (not upstream's BearSSL/cellHttp), ranged
+reads follow PLAN.md's window policy, a spent stream address is
+recovered by re-running the extractor and resuming at the parse
+position, and decoding/presentation run through Neon Lounge's own
+player (src/yt_player.c).
+
+FAAD2
+-----
+AAC audio decoding uses FAAD2 (libfaad from the PS3 portlibs),
+licensed under the GNU General Public License, version 2.
+
+minimp3
+-------
+MP3 decoding uses minimp3 (third_party/minimp3), under its CC0 / MIT
+dual terms as recorded in that directory.

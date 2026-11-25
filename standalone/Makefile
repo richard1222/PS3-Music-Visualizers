@@ -22,8 +22,8 @@ endif
 LDFLAGS += $(LIBPSL1GHT_LIB) -L$(PORTLIBS)/lib -Wl,--gc-sections
 LDFLAGS += -Wl,--wrap=gcmGetFlipStatus
 LDFLAGS += -Wl,--wrap=sysThreadCreate
-LDLIBS := -lSDL2 -lfreetype -lz -lgcm_sys -lrsx -lsysutil -lio -laudio -lrt -llv2 -lm -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lnet -lnetctl -lsysutil -lsysmodule -lm -lz
-OBJECTS := $(addprefix $(BUILDDIR)/,main.o spectrum.o ui.o library.o runtime_ps3.o wait_guard.o system_state.o display.o thread_stack.o clock_est.o visualizer.o gallery.o update.o pcm_ring.o pc_audio.o safety.o ftp_server.o)
+LDLIBS := -lSDL2 -lfreetype -lz -lvdec -lgcm_sys -lrsx -lsysutil -lio -laudio -lrt -llv2 -lm -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lnet -lnetctl -lsysutil -lsysmodule -lm -lz -ljpeg -lfaad
+OBJECTS := $(addprefix $(BUILDDIR)/,main.o spectrum.o ui.o library.o runtime_ps3.o wait_guard.o system_state.o display.o thread_stack.o clock_est.o visualizer.o gallery.o update.o pcm_ring.o eq.o pc_audio.o safety.o ftp_server.o youtube.o yt_net.o yt_worker.o yt_osk.o yt_player.o yt_aac.o yt_adts.o yt_pick.o yt_sync.o yt_demux.o demux-mp4.o mp4.o h264.o video-source.o ps3vdec.o vdecex.o)
 .PHONY: all pkg host-test host-tls-test
 HOST_CURL_CFLAGS ?= $(shell pkg-config --cflags libcurl 2>/dev/null)
 HOST_CURL_LIBS ?= $(shell pkg-config --libs libcurl 2>/dev/null)
@@ -64,6 +64,19 @@ host-test:
 	./build/test_update
 	gcc -std=c99 -Wall -Wextra -Werror -Isrc tests/test_ftp_server.c src/ftp_server.c -o build/test_ftp_server
 	./build/test_ftp_server
+	gcc -std=c99 -Wall -Wextra -Isrc tests/test_youtube.c src/youtube.c src/yt_net.c -o build/test_youtube
+	./build/test_youtube
+	gcc -std=c99 -Wall -Wextra -Werror -Isrc tests/test_yt_playback.c src/yt_pick.c src/yt_sync.c src/yt_adts.c -o build/test_yt_playback
+	./build/test_yt_playback
+	gcc -std=c99 -Wall -Wextra -Werror -Isrc tests/test_yt_osk.c src/yt_osk.c -o build/test_yt_osk
+	./build/test_yt_osk
+	gcc -std=c99 -Wall -Wextra -Werror -Isrc tests/test_settings_layout.c -o build/test_settings_layout
+	./build/test_settings_layout
+	gcc -std=c99 -Wall -Wextra -Werror -Isrc tests/test_eq.c src/eq.c -lm -o build/test_eq
+	./build/test_eq
+	sh tests/make_yt_fixtures.sh build/ytfx
+	gcc -std=c99 -Wall -Wextra -Werror -Isrc tests/test_yt_demux.c src/yt_demux.c src/demux-mp4.c src/mp4.c src/h264.c src/video-source.c -o build/test_yt_demux
+	./build/test_yt_demux build/ytfx
 host-tls-test:
 	mkdir -p build
 	gcc -std=c99 -Wall -Wextra -Werror -Isrc $(HOST_CURL_CFLAGS) tests/test_update_tls.c $(HOST_CURL_LIBS) -o build/test_update_tls
