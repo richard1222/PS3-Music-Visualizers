@@ -1,9 +1,26 @@
+# PS3 Music Visualizers
+
+Home of **Neon Lounge**, a standalone music player for the PlayStation 3, by **Richard1222 / Saber** — plus the built-in Visual Player resource research that started this repo.
+
+## Neon Lounge — current version 1.19
+
+A native PS3 music app (title ID `SVIZ00001`) with an original-Xbox-dashboard look: play your MP3 library from HDD/USB, stream internet radio, and watch YouTube music videos — all decoded on the console, all run through a real 5-band parametric EQ and audio-reactive visualizers.
+
+**New in 1.19:** Internet Radio (11 built-in stations — SomaFM, Radio Paradise, KEXP — plus your own via `USRDIR/stations.txt`), a sleep timer with fade-out, `.m3u`/`.m3u8` playlist import, history-aware shuffle, Most Played, playlist sorting, an idle screensaver, and eleven bug fixes from a full code audit.
+
+- Download: [GitHub release v1.19](https://github.com/richard1222/PS3-Music-Visualizers/releases/tag/neon-lounge-1.19) · [Brewology listing](https://store.brewology.com/ps3/neon-lounge/)
+- Full app documentation: [standalone/README.md](standalone/README.md)
+- Requirements: PS3 with CFW or HEN. Install the PKG and launch from the XMB.
+
+---
+
+## Built-in Visual Player resources (research track)
+
 ![Platform](https://img.shields.io/badge/Platform-PlayStation_3-003791)
 ![Target](https://img.shields.io/badge/Target-Built--in_Visual_Player-blue)
 ![Development](https://img.shields.io/badge/Development-Native_integration-orange)
 ![License](https://img.shields.io/badge/Code-MIT-blue)
 
-# Saber PS3 Music Visualizers
 
 Custom resources for the **built-in PS3 music player's Visual Player**. Credit to **Richard1222 / Saber**.
 
