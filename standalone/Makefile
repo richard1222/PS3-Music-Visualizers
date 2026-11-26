@@ -23,7 +23,7 @@ LDFLAGS += $(LIBPSL1GHT_LIB) -L$(PORTLIBS)/lib -Wl,--gc-sections
 LDFLAGS += -Wl,--wrap=gcmGetFlipStatus
 LDFLAGS += -Wl,--wrap=sysThreadCreate
 LDLIBS := -lSDL2 -lfreetype -lz -lvdec -lgcm_sys -lrsx -lsysutil -lio -laudio -lrt -llv2 -lm -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lnet -lnetctl -lsysutil -lsysmodule -lm -lz -ljpeg -lfaad
-OBJECTS := $(addprefix $(BUILDDIR)/,main.o spectrum.o ui.o library.o runtime_ps3.o wait_guard.o system_state.o display.o thread_stack.o clock_est.o visualizer.o gallery.o update.o pcm_ring.o eq.o pc_audio.o safety.o ftp_server.o youtube.o yt_net.o yt_worker.o yt_osk.o yt_player.o yt_aac.o yt_adts.o yt_pick.o yt_sync.o yt_demux.o demux-mp4.o mp4.o h264.o video-source.o ps3vdec.o vdecex.o)
+OBJECTS := $(addprefix $(BUILDDIR)/,main.o spectrum.o ui.o library.o runtime_ps3.o wait_guard.o system_state.o display.o thread_stack.o clock_est.o visualizer.o gallery.o update.o pcm_ring.o eq.o pc_audio.o radio.o safety.o ftp_server.o youtube.o yt_net.o yt_worker.o yt_osk.o yt_player.o yt_aac.o yt_adts.o yt_pick.o yt_sync.o yt_demux.o demux-mp4.o mp4.o h264.o video-source.o ps3vdec.o vdecex.o)
 .PHONY: all pkg host-test host-tls-test
 HOST_CURL_CFLAGS ?= $(shell pkg-config --cflags libcurl 2>/dev/null)
 HOST_CURL_LIBS ?= $(shell pkg-config --libs libcurl 2>/dev/null)

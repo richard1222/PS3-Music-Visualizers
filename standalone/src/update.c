@@ -115,12 +115,19 @@ static int json_string(const char *text,const char *key,char *out,size_t size) {
     const char *p;
     size_t n=0;
     if(snprintf(pattern,sizeof(pattern),"\"%s\"",key)>=(int)sizeof(pattern)) return -1;
-    p=strstr(text,pattern);
-    if(!p) return -1;
-    p+=strlen(pattern);
-    while(*p==' '||*p=='\t'||*p=='\n'||*p=='\r') p++;
-    if(*p!=':') return -1;
-    p++;
+    /* A key name can also appear inside an earlier string value; only
+     * an occurrence followed by ':' is the real field, so keep
+     * searching past false matches instead of failing the manifest. */
+    p=text;
+    for(;;) {
+        const char *q;
+        p=strstr(p,pattern);
+        if(!p) return -1;
+        q=p+strlen(pattern);
+        while(*q==' '||*q=='\t'||*q=='\n'||*q=='\r') q++;
+        if(*q==':') { p=q+1; break; }
+        p+=strlen(pattern);
+    }
     while(*p==' '||*p=='\t'||*p=='\n'||*p=='\r') p++;
     if(*p!='"') return -1;
     p++;

@@ -7,6 +7,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <math.h>
+static int bmp_dims_within_limits(const char *path);
 static const struct { const char *file; const char *title; } known_titles[]={
     {"fate.bmp","Rin Tohsaka / Saber"},
     {"one-piece.bmp","Nami / Nico Robin"},
@@ -57,6 +58,7 @@ void gallery_open(Gallery *g,const char *folder) {
     for(int i=0;i<count && g->loaded<NL_GALLERY_SLIDES;i++) {
         char path[768];int n=snprintf(path,sizeof(path),"%s/%s",folder,names[i]);
         if(n<0 || n>=(int)sizeof(path)) continue;
+        if(!bmp_dims_within_limits(path)) continue;
         SDL_Surface *image=SDL_LoadBMP(path);
         if(!image) continue;
         if(image->w<1 || image->h<1 || image->w>1280 || image->h>720) {SDL_FreeSurface(image);continue;}
@@ -150,11 +152,54 @@ static int gallery_fail(char *err,size_t size,const char *msg) {
     if(err && size) snprintf(err,size,"%s",msg);
     return -1;
 }
+/* Declared-dimension check from the BMP header alone, run BEFORE
+ * SDL_LoadBMP allocates a surface at the declared size: a crafted
+ * header far under the 8 MB upload cap could otherwise declare e.g.
+ * 8000x8000 and exhaust memory before any post-load check runs.
+ * Returns 0 only when the header positively declares out-of-limit
+ * dimensions; unparseable headers fall through to the SDL check. */
+static int bmp_dims_within_limits(const char *path) {
+    FILE *f=fopen(path,"rb");
+    unsigned char hdr[26];
+    size_t got;
+    unsigned dib;
+    long w=-1,h=-1;
+    if(!f) return 1;
+    got=fread(hdr,1,sizeof(hdr),f);
+    fclose(f);
+    if(got<26 || hdr[0]!='B' || hdr[1]!='M') return 1;
+    dib=(unsigned)hdr[14] | ((unsigned)hdr[15]<<8) | ((unsigned)hdr[16]<<16) | ((unsigned)hdr[17]<<24);
+    if(dib>=40) {
+        w=(long)(int32_t)((uint32_t)hdr[18] | ((uint32_t)hdr[19]<<8) | ((uint32_t)hdr[20]<<16) | ((uint32_t)hdr[21]<<24));
+        h=(long)(int32_t)((uint32_t)hdr[22] | ((uint32_t)hdr[23]<<8) | ((uint32_t)hdr[24]<<16) | ((uint32_t)hdr[25]<<24));
+        if(h<0) h=-h; /* top-down row order */
+    } else if(dib==12) {
+        w=hdr[18] | (hdr[19]<<8);
+        h=hdr[20] | (hdr[21]<<8);
+    }
+    if(w>=0 && (w<1 || h<1 || w>1280 || h>720)) return 0;
+    return 1;
+}
+static int count_bmp_files(const char *folder) {
+    DIR *dir=opendir(folder);
+    struct dirent *entry;
+    int count=0;
+    if(!dir) return -1;
+    while((entry=readdir(dir))) {
+        const char *ext;
+        if(entry->d_name[0]=='.') continue;
+        ext=strrchr(entry->d_name,'.');
+        if(ext && !strcasecmp(ext,".bmp")) count++;
+    }
+    closedir(dir);
+    return count;
+}
 /* One shared artwork check for Add artwork and the FTP server: the file
  * must be a BMP SDL can load, 1280x720 or smaller. */
 int gallery_validate_bmp(const char *path,char *err,size_t err_size) {
     SDL_Surface *image;
     if(!path || !*path) return gallery_fail(err,err_size,"Not a supported BMP (1280x720 or smaller).");
+    if(!bmp_dims_within_limits(path)) return gallery_fail(err,err_size,"Not a supported BMP (1280x720 or smaller).");
     image=SDL_LoadBMP(path);
     if(!image || image->w<1 || image->h<1 || image->w>1280 || image->h>720) {
         if(image) SDL_FreeSurface(image);
@@ -181,7 +226,10 @@ int gallery_add(Gallery *g,const char *src_path,char *err,size_t err_size) {
         return gallery_fail(err,err_size,"That file name is not supported.");
     ext=strrchr(name,'.');
     if(!ext || strcasecmp(ext,".bmp")) return gallery_fail(err,err_size,"Only BMP pictures can be added.");
-    if(g->loaded>=NL_GALLERY_SLIDES) return gallery_fail(err,err_size,"Gallery is full (7). Remove one first.");
+    /* Count folder files, as the FTP path does: counting only loaded
+     * slides disagrees when a folder file is unloadable, and could
+     * report success for a picture that can never be displayed. */
+    if(count_bmp_files(g->folder)>=NL_GALLERY_SLIDES) return gallery_fail(err,err_size,"Gallery is full (7). Remove one first.");
     if(snprintf(dest,sizeof(dest),"%s/%s",g->folder,name)>=(int)sizeof(dest))
         return gallery_fail(err,err_size,"That file name is too long.");
     probe=fopen(dest,"rb");

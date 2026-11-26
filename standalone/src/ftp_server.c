@@ -272,10 +272,10 @@ static int do_retr(int ctrl,int data_fd,const char *name) {
     unsigned char buf[8192];
     size_t got;
     int ok=1;
-    if(join_path(path,sizeof(path),serve_folder,name)) return send_reply(ctrl,"550 Invalid file name.\r\n");
+    if(join_path(path,sizeof(path),serve_folder,name)) { close(data_fd); return send_reply(ctrl,"550 Invalid file name.\r\n"); }
     f=fopen(path,"rb");
-    if(!f) return send_reply(ctrl,"550 File not found.\r\n");
-    if(send_reply(ctrl,"150 Opening data connection.\r\n")) { fclose(f); return -1; }
+    if(!f) { close(data_fd); return send_reply(ctrl,"550 File not found.\r\n"); }
+    if(send_reply(ctrl,"150 Opening data connection.\r\n")) { fclose(f); close(data_fd); return -1; }
     while((got=fread(buf,1,sizeof(buf),f))>0) {
         if(send_all(data_fd,buf,got)) { ok=0; break; }
     }
@@ -291,21 +291,23 @@ static int do_stor(int ctrl,int data_fd,const char *name) {
     unsigned char buf[8192];
     long total=0;
     int idle_timeouts=0,ok=1,too_big=0;
+    /* Every error return below owns data_fd: close it, or repeated
+     * failed transfers leak sockets until data connections fail. */
     if(join_path(dest,sizeof(dest),serve_folder,name) ||
        join_path(temp,sizeof(temp),serve_folder,FTP_TEMP_NAME))
-        return send_reply(ctrl,"550 Invalid file name.\r\n");
+        { close(data_fd); return send_reply(ctrl,"550 Invalid file name.\r\n"); }
     {
         FILE *probe=fopen(dest,"rb");
-        if(probe) { fclose(probe); return send_reply(ctrl,"550 That artwork is already in the gallery.\r\n"); }
+        if(probe) { fclose(probe); close(data_fd); return send_reply(ctrl,"550 That artwork is already in the gallery.\r\n"); }
     }
     {
         int count=count_bmp_files(serve_folder);
-        if(count<0) return send_reply(ctrl,"550 Gallery folder unavailable.\r\n");
-        if(count>=NL_GALLERY_SLIDES) return send_reply(ctrl,"550 Gallery is full (7). Remove one first.\r\n");
+        if(count<0) { close(data_fd); return send_reply(ctrl,"550 Gallery folder unavailable.\r\n"); }
+        if(count>=NL_GALLERY_SLIDES) { close(data_fd); return send_reply(ctrl,"550 Gallery is full (7). Remove one first.\r\n"); }
     }
     out=fopen(temp,"wb");
-    if(!out) return send_reply(ctrl,"550 Could not save to the gallery folder.\r\n");
-    if(send_reply(ctrl,"150 Opening data connection.\r\n")) { fclose(out); remove(temp); return -1; }
+    if(!out) { close(data_fd); return send_reply(ctrl,"550 Could not save to the gallery folder.\r\n"); }
+    if(send_reply(ctrl,"150 Opening data connection.\r\n")) { fclose(out); remove(temp); close(data_fd); return -1; }
     for(;;) {
         int r=wait_readable(data_fd,2000);
         int got;
@@ -345,11 +347,40 @@ static int do_stor(int ctrl,int data_fd,const char *name) {
 }
 
 static int do_dele(int ctrl,const char *name) {
-    char path[768];
+    char path[768],parent[512],removed_dir[768],backup[768];
+    char *slash;
+    const char *ext;
     if(join_path(path,sizeof(path),serve_folder,name)) return send_reply(ctrl,"550 Invalid file name.\r\n");
-    if(remove(path)) return send_reply(ctrl,"550 Could not delete that file.\r\n");
+    /* Mirror the app's own Remove artwork: never destroy the file.
+     * It moves to a removed/ backup folder beside the gallery folder
+     * under a numbered name, so an FTP delete stays recoverable. */
+    if(snprintf(parent,sizeof(parent),"%s",serve_folder)>=(int)sizeof(parent))
+        return send_reply(ctrl,"550 Could not delete that file.\r\n");
+    slash=strrchr(parent,'/');
+    if(!slash) return send_reply(ctrl,"550 Could not delete that file.\r\n");
+    *slash=0;
+    if(snprintf(removed_dir,sizeof(removed_dir),"%s/removed",parent)>=(int)sizeof(removed_dir))
+        return send_reply(ctrl,"550 Could not delete that file.\r\n");
+    mkdir(removed_dir,0777);
+    if(snprintf(backup,sizeof(backup),"%s/%s",removed_dir,name)>=(int)sizeof(backup))
+        return send_reply(ctrl,"550 Could not delete that file.\r\n");
+    for(int i=1;i<=9;i++) {
+        FILE *probe=fopen(backup,"rb");
+        int n;
+        if(!probe) break;
+        fclose(probe);
+        ext=strrchr(name,'.');
+        if(ext) n=snprintf(backup,sizeof(backup),"%s/%.*s.%d%s",removed_dir,(int)(ext-name),name,i,ext);
+        else n=snprintf(backup,sizeof(backup),"%s/%s.%d",removed_dir,name,i);
+        if(n<0 || n>=(int)sizeof(backup)) return send_reply(ctrl,"550 Could not delete that file.\r\n");
+    }
+    {
+        FILE *probe=fopen(backup,"rb");
+        if(probe) { fclose(probe); return send_reply(ctrl,"550 Could not delete that file.\r\n"); }
+    }
+    if(rename(path,backup)) return send_reply(ctrl,"550 Could not delete that file.\r\n");
     SDL_AtomicSet(&dirty_flag,1);
-    return send_reply(ctrl,"250 File deleted.\r\n");
+    return send_reply(ctrl,"250 File moved to the removed folder.\r\n");
 }
 
 static void serve_client(int ctrl) {
@@ -413,6 +444,7 @@ static void serve_client(int ctrl) {
         else if(!strcmp(verb,"RETR")) {
             int data_fd;
             if(ftp_safe_name(arg,name,sizeof(name))) { if(send_reply(ctrl,"550 Invalid file name.\r\n")) break; continue; }
+            if(!ftp_is_bmp_name(name)) { if(send_reply(ctrl,"550 Only BMP pictures are available.\r\n")) break; continue; }
             if(pasv_fd<0) { if(send_reply(ctrl,"425 Use PASV first.\r\n")) break; continue; }
             data_fd=accept_data(pasv_fd);
             close(pasv_fd); pasv_fd=-1;
@@ -431,13 +463,14 @@ static void serve_client(int ctrl) {
         }
         else if(!strcmp(verb,"DELE")) {
             if(ftp_safe_name(arg,name,sizeof(name))) { if(send_reply(ctrl,"550 Invalid file name.\r\n")) break; continue; }
+            if(!ftp_is_bmp_name(name)) { if(send_reply(ctrl,"550 Only BMP pictures can be removed.\r\n")) break; continue; }
             if(do_dele(ctrl,name)) break;
         }
         else if(!strcmp(verb,"SIZE")) {
             char path[768];
             struct stat st;
             char reply[64];
-            if(ftp_safe_name(arg,name,sizeof(name)) || join_path(path,sizeof(path),serve_folder,name) || stat(path,&st)) {
+            if(ftp_safe_name(arg,name,sizeof(name)) || !ftp_is_bmp_name(name) || join_path(path,sizeof(path),serve_folder,name) || stat(path,&st)) {
                 if(send_reply(ctrl,"550 File not found.\r\n")) break;
             } else {
                 snprintf(reply,sizeof(reply),"213 %ld\r\n",(long)st.st_size);

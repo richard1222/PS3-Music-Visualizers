@@ -175,16 +175,21 @@ int eq_format_user_slot(char *buf,size_t size,int slot) {
 }
 
 int eq_parse_user_slot(const char *line,int *slot_out,int gains_out[EQ_BANDS]) {
-    int slot,g[EQ_BANDS];
+    /* Parse wide (long long) with a whitespace-tolerant format: a %d
+     * conversion of an out-of-range numeral can wrap into the valid
+     * gain range with its sign flipped, and a leading space in the
+     * file used to make the literal "slot" never match. Saturating
+     * wide values keep their sign, so the clamps below stay honest. */
+    long long slot,g[EQ_BANDS];
     if(!line || !slot_out || !gains_out) return 0;
-    if(sscanf(line,"slot %d %d %d %d %d %d",&slot,&g[0],&g[1],&g[2],&g[3],&g[4])!=6) return 0;
+    if(sscanf(line," slot %lld %lld %lld %lld %lld %lld",&slot,&g[0],&g[1],&g[2],&g[3],&g[4])!=6) return 0;
     if(slot<0 || slot>=EQ_USER_PRESET_COUNT) return 0;
     for(int i=0;i<EQ_BANDS;i++) {
         if(g[i]<EQ_GAIN_MIN) g[i]=EQ_GAIN_MIN;
         if(g[i]>EQ_GAIN_MAX) g[i]=EQ_GAIN_MAX;
-        gains_out[i]=g[i];
+        gains_out[i]=(int)g[i];
     }
-    *slot_out=slot;
+    *slot_out=(int)slot;
     return 1;
 }
 

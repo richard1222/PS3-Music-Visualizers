@@ -7,6 +7,7 @@
 #include <string.h>
 #include <limits.h>
 #include <time.h>
+#include <sys/stat.h>
 #include <math.h>
 #define MINIMP3_NO_STDIO
 #define MINIMP3_NO_SIMD
@@ -28,6 +29,7 @@
 #include "yt_osk.h"
 #include "yt_player.h"
 #include "ftp_server.h"
+#include "radio.h"
 #include "settings_layout.h"
 #include "eq.h"
 #include "frame_health.h"
@@ -48,13 +50,107 @@ static SDL_atomic_t decoded_blocks;
 #endif
 static float pcm[SV_FFT];
 static unsigned pcm_position;
-static int pc_mode,yt_mode;
+static int pc_mode,yt_mode,radio_mode;
 static SDL_Surface *art_cache,*art_cache_source;
 static int rate=48000,channels=2,playing=-1,paused,decoder_open;
 static char message[160]="Choose a folder or an MP3 to begin";
 static size_t file_read(void *buf,size_t size,void *userdata) { return fread(buf,1,size,(FILE*)userdata); }
 static int file_seek(uint64_t position,void *userdata) {
     return position>LONG_MAX?-1:fseek((FILE*)userdata,(long)position,SEEK_SET);
+}
+/* --- Play counts, most played, sort (v1.19) ------------------------------
+ * Counts persist in USRDIR/playcounts.txt ("count<TAB>path" per line,
+ * the yt-list pattern), bumped on every successful play_track. Track
+ * structs carry their count (Track.plays) so the playlist can show it
+ * and Most Played can be built without re-reading the file. */
+static struct { char path[NL_PATH]; int count; } play_counts[NL_TRACKS];
+static int play_counts_n;
+static void counts_save(void) {
+    FILE *f=fopen(ASSETS "playcounts.txt","w");
+    if(!f) return;
+    for(int i=0;i<play_counts_n;i++) fprintf(f,"%d\t%s\n",play_counts[i].count,play_counts[i].path);
+    fclose(f);
+}
+static void counts_load(void) {
+    play_counts_n=0;
+    FILE *f=fopen(ASSETS "playcounts.txt","r");
+    if(!f) return;
+    char line[NL_PATH+32];
+    while(play_counts_n<NL_TRACKS && fgets(line,sizeof(line),f)) {
+        char *tab=strchr(line,'\t');
+        if(!tab) continue;
+        *tab=0;
+        int c=atoi(line);
+        if(c<=0) continue;
+        char *p=tab+1;
+        size_t len=strlen(p);
+        while(len && (p[len-1]=='\n' || p[len-1]=='\r')) p[--len]=0;
+        if(!len) continue;
+        snprintf(play_counts[play_counts_n].path,NL_PATH,"%s",p);
+        play_counts[play_counts_n].count=c;
+        play_counts_n++;
+    }
+    fclose(f);
+}
+static int counts_get(const char *path) {
+    for(int i=0;i<play_counts_n;i++) if(!strcmp(play_counts[i].path,path)) return play_counts[i].count;
+    return 0;
+}
+static void counts_bump(const char *path) {
+    for(int i=0;i<play_counts_n;i++) if(!strcmp(play_counts[i].path,path)) { play_counts[i].count++; counts_save(); return; }
+    if(play_counts_n<NL_TRACKS) {
+        snprintf(play_counts[play_counts_n].path,NL_PATH,"%s",path);
+        play_counts[play_counts_n].count=1;
+        play_counts_n++;
+        counts_save();
+    }
+}
+static void hydrate_plays(void) {
+    for(int i=0;i<library.count;i++) library.tracks[i].plays=counts_get(library.tracks[i].path);
+}
+/* Playlist sort: 0 name A-Z, 1 name Z-A, 2 newest first, 3 oldest
+ * first, persisted in USRDIR/sort.txt (the viz.txt pattern). Sorting
+ * remaps the playing index (and the playlist selection when the
+ * caller passes it) by path, and clears shuffle history, whose
+ * entries are indices into the old order. */
+static int sort_mode;
+static const char *sort_names[]={"Name A-Z","Name Z-A","Newest first","Oldest first"};
+static void sort_save(void) {
+    FILE *f=fopen(ASSETS "sort.txt","w");
+    if(f) { fprintf(f,"sort=%d\n",sort_mode); fclose(f); }
+}
+static void sort_load(void) {
+    FILE *f=fopen(ASSETS "sort.txt","r");
+    if(f) { int m=0; if(fscanf(f,"sort=%d",&m)==1 && m>=0 && m<4) sort_mode=m; fclose(f); }
+}
+static int cmp_name_asc(const void *a,const void *b) {
+    const Track *x=a,*y=b;
+    int r=strcasecmp(x->name,y->name);
+    return r?r:strcasecmp(x->path,y->path);
+}
+static int cmp_name_desc(const void *a,const void *b) { return -cmp_name_asc(a,b); }
+static int cmp_newest(const void *a,const void *b) {
+    const Track *x=a,*y=b;
+    if(x->mtime!=y->mtime) return x->mtime<y->mtime?1:-1;
+    return strcasecmp(x->name,y->name);
+}
+static int cmp_oldest(const void *a,const void *b) {
+    const Track *x=a,*y=b;
+    if(x->mtime!=y->mtime) return x->mtime>y->mtime?1:-1;
+    return strcasecmp(x->name,y->name);
+}
+static void apply_sort(int *sel_io) {
+    if(library.count<2) return;
+    char cur[NL_PATH]="",sel[NL_PATH]="";
+    int have_cur=playing>=0 && playing<library.count;
+    int have_sel=sel_io && *sel_io>=0 && *sel_io<library.count;
+    if(have_cur) snprintf(cur,sizeof(cur),"%s",library.tracks[playing].path);
+    if(have_sel) snprintf(sel,sizeof(sel),"%s",library.tracks[*sel_io].path);
+    qsort(library.tracks,(size_t)library.count,sizeof(Track),
+          sort_mode==1?cmp_name_desc:(sort_mode==2?cmp_newest:(sort_mode==3?cmp_oldest:cmp_name_asc)));
+    if(have_cur) { playing=-1; for(int i=0;i<library.count;i++) if(!strcmp(library.tracks[i].path,cur)) { playing=i; break; } }
+    if(have_sel) for(int i=0;i<library.count;i++) if(!strcmp(library.tracks[i].path,sel)) { *sel_io=i; break; }
+    /* Callers clear shuffle history: its entries index the old order. */
 }
 static void audio_callback(void *userdata,Uint8 *stream,int bytes) {
     (void)userdata;
@@ -75,7 +171,7 @@ static void audio_callback(void *userdata,Uint8 *stream,int bytes) {
         if(channels==2 && i+1<count) v=(v+(float)samples[i+1]/32768.0f)*0.5f;
         pcm[pcm_position++%SV_FFT]=v;
     }
-    if(!pc_mode && !yt_mode && count<(size_t)bytes/2) SDL_AtomicSet(&finished,1);
+    if(!pc_mode && !yt_mode && !radio_mode && count<(size_t)bytes/2) SDL_AtomicSet(&finished,1);
 }
 static void stop_music(void) {
     safety_stage(1);
@@ -91,6 +187,8 @@ static void stop_music(void) {
     pc_mode=0;
     if(yt_mode) yt_player_stop();
     yt_mode=0;
+    if(radio_mode) radio_stop();
+    radio_mode=0;
     if(decoder_open) mp3dec_ex_close(&decoder);
     decoder_open=0;
     if(music_file) fclose(music_file);
@@ -126,6 +224,8 @@ static int play_track(int index) {
     NL_EVENT(audio?"audio-open-complete":SDL_GetError());
     if(!audio) { stop_music(); snprintf(message,sizeof(message),"Audio device unavailable"); return -1; }
     playing=index; paused=0;
+    library.tracks[index].plays++;
+    counts_bump(library.tracks[index].path);
     snprintf(message,sizeof(message),"MP3 playback | %d Hz | %s",rate,channels==2?"Stereo":"Mono");
     SDL_PauseAudioDevice(audio,0); return 0;
 }
@@ -154,6 +254,128 @@ static void toggle_pause(void) { if(audio) { paused=!paused; SDL_PauseAudioDevic
 static void change_volume(int delta) {
     int v=SDL_AtomicGet(&volume)+delta;
     SDL_AtomicSet(&volume,v<0?0:(v>100?100:v));
+}
+/* --- Internet radio (v1.19) ----------------------------------------------
+ * Stations are the verified built-ins below plus USRDIR/stations.txt
+ * (one "name<TAB>url" per line). Playback reuses the shared decoder:
+ * play_radio_stream starts the download thread, and once it reports
+ * enough buffered, the main loop opens the decoder on the byte ring
+ * (radio_open_decoder) - the same device-open shape as play_track,
+ * so EQ, spectrum, pause and the sleep timer all work unchanged. */
+typedef struct { char name[64]; char url[256]; } Station;
+static Station stations[40];
+static int station_count;
+static int radio_station=-1;
+static size_t radio_io_read(void *buf,size_t size,void *userdata) {
+    (void)userdata;
+    return radio_read((uint8_t*)buf,size);
+}
+static int radio_io_seek(uint64_t position,void *userdata) {
+    (void)position; (void)userdata;
+    return -1; /* a live stream cannot seek */
+}
+static void stations_load(void) {
+    static const struct { const char *n,*u; } builtins[]={
+        {"Groove Salad (SomaFM)","https://ice1.somafm.com/groovesalad-128-mp3"},
+        {"Lush (SomaFM)","https://ice1.somafm.com/lush-128-mp3"},
+        {"Secret Agent (SomaFM)","https://ice1.somafm.com/secretagent-128-mp3"},
+        {"Drone Zone (SomaFM)","https://ice1.somafm.com/dronezone-128-mp3"},
+        {"DEF CON Radio (SomaFM)","https://ice1.somafm.com/defcon-128-mp3"},
+        {"Boot Liquor (SomaFM)","https://ice1.somafm.com/bootliquor-128-mp3"},
+        {"Sonic Universe (SomaFM)","https://ice1.somafm.com/sonicuniverse-128-mp3"},
+        {"Underground 80s (SomaFM)","https://ice1.somafm.com/u80s-128-mp3"},
+        {"Ill Street Lounge (SomaFM)","https://ice1.somafm.com/illstreet-128-mp3"},
+        {"Radio Paradise","https://stream.radioparadise.com/mp3-192"},
+        {"KEXP 90.3 Seattle","https://kexp-mp3-128.streamguys1.com/kexp128.mp3"}
+    };
+    station_count=0;
+    for(size_t i=0;i<sizeof(builtins)/sizeof(builtins[0]) && station_count<40;i++) {
+        snprintf(stations[station_count].name,sizeof(stations[station_count].name),"%s",builtins[i].n);
+        snprintf(stations[station_count].url,sizeof(stations[station_count].url),"%s",builtins[i].u);
+        station_count++;
+    }
+    FILE *f=fopen(ASSETS "stations.txt","r");
+    if(!f) return;
+    char line[340];
+    while(station_count<40 && fgets(line,sizeof(line),f)) {
+        char *tab=strchr(line,'\t');
+        if(!tab) continue;
+        *tab=0;
+        char *u=tab+1;
+        size_t len=strlen(u);
+        while(len && (u[len-1]=='\n' || u[len-1]=='\r' || u[len-1]==' ')) u[--len]=0;
+        if(!line[0] || strncmp(u,"http",4)) continue;
+        snprintf(stations[station_count].name,sizeof(stations[station_count].name),"%s",line);
+        snprintf(stations[station_count].url,sizeof(stations[station_count].url),"%s",u);
+        station_count++;
+    }
+    fclose(f);
+}
+static void play_radio_stream(int idx) {
+    char ca[768];
+    stop_music();
+    radio_station=idx;
+    snprintf(ca,sizeof(ca),"%scerts/cacert.pem",ASSETS);
+    if(radio_start(stations[idx].url,ca)) {
+        snprintf(message,sizeof(message),"Radio failed to start");
+        radio_station=-1;
+        return;
+    }
+    radio_mode=1;
+    snprintf(message,sizeof(message),"Radio: connecting to %s...",stations[idx].name);
+}
+static int radio_open_decoder(void) {
+    SDL_AudioSpec want,got;
+    memset(&decoder,0,sizeof(decoder));
+    decoder_io.read=radio_io_read; decoder_io.read_data=NULL;
+    decoder_io.seek=radio_io_seek; decoder_io.seek_data=NULL;
+    decoder_open=1;
+    if(mp3dec_ex_open_cb(&decoder,&decoder_io,MP3D_DO_NOT_SCAN)) {
+        stop_music(); snprintf(message,sizeof(message),"Radio: not an MP3 stream"); return -1;
+    }
+    rate=decoder.info.hz; channels=decoder.info.channels;
+    if(rate<8000 || rate>48000 || channels<1 || channels>2) {
+        stop_music(); snprintf(message,sizeof(message),"Radio: unsupported stream format"); return -1;
+    }
+    SDL_zero(want); want.freq=rate; want.channels=channels;
+    want.format=AUDIO_S16SYS; want.samples=2048; want.callback=audio_callback;
+    audio=SDL_OpenAudioDevice(NULL,0,&want,&got,0);
+    if(!audio) { stop_music(); snprintf(message,sizeof(message),"Audio device unavailable"); return -1; }
+    paused=0;
+    snprintf(message,sizeof(message),"Radio | %s | %d Hz",stations[radio_station].name,rate);
+    SDL_PauseAudioDevice(audio,0);
+    return 0;
+}
+/* Build the queue from the play-count store, most played first.
+ * Entries whose file is gone are skipped; the result replaces the
+ * current queue, like a folder scan or an .m3u load does. */
+static void play_most_played(void) {
+    static struct { char path[NL_PATH]; int count; } sorted[NL_TRACKS];
+    memcpy(sorted,play_counts,sizeof(play_counts));
+    int n=play_counts_n;
+    for(int i=1;i<n;i++) {  /* insertion sort, count descending */
+        int j=i;
+        while(j>0 && sorted[j-1].count<sorted[j].count) {
+            __typeof__(sorted[0]) tmp=sorted[j-1]; sorted[j-1]=sorted[j]; sorted[j]=tmp; j--;
+        }
+    }
+    stop_music();
+    /* The caller clears shuffle history (indices into the old queue). */
+    memset(&library,0,sizeof(library));
+    for(int i=0;i<n && library.count<100;i++) {
+        const char *p=sorted[i].path;
+        size_t len=strlen(p);
+        if(len<4 || strcasecmp(p+len-4,".mp3")) continue;
+        struct stat st;
+        if(stat(p,&st) || !S_ISREG(st.st_mode)) continue;
+        Track *t=&library.tracks[library.count++];
+        snprintf(t->path,sizeof(t->path),"%s",p);
+        const char *base=strrchr(p,'/');
+        snprintf(t->name,sizeof(t->name),"%.255s",base?base+1:p);
+        t->mtime=(long)st.st_mtime;
+        t->plays=sorted[i].count;
+    }
+    snprintf(message,sizeof(message),"Most played: %d tracks",library.count);
 }
 /* EQ settings persist in USRDIR/eq.txt, the same plain-file pattern
  * as the app's other small state. Format v2 (v1.18): line 1 is the
@@ -240,6 +462,83 @@ static void viz_load(void) {
     if(fscanf(f,"%d",&m)==1 && m>=0 && m<VIZ_MODE_COUNT) viz_mode=m;
     fclose(f);
 }
+/* --- Sleep timer & shuffle (v1.19) ------------------------------------
+ * Sleep timer: a Settings row picks Off/15/30/45/60/90 minutes; the
+ * choice persists in USRDIR/sleep.txt (the viz.txt pattern) and the
+ * countdown arms at boot and on every change. When the deadline
+ * passes, whatever is playing stops. Over the last ten seconds the
+ * shared volume atomic ramps to zero so the stop is a fade, not a
+ * cut; the pre-fade volume is restored when the timer fires, when
+ * playback ends on its own, or when the user grabs the volume -
+ * a manual change cancels the fade and keeps the user's value.
+ * Shuffle: Square in the Music views flips it (USRDIR/shuffle.txt);
+ * the finished-track advance and R1 then jump to a random other
+ * track, and L1 walks back through a small history stack instead. */
+static const int sleep_choices[]={0,15,30,45,60,90};
+#define SLEEP_CHOICE_COUNT 6
+static int sleep_minutes;
+static int sleep_armed;
+static Uint32 sleep_deadline;
+static int sleep_fade_vol=-1,sleep_fade_last;
+static void sleep_save(void) {
+    FILE *f=fopen(ASSETS "sleep.txt","w");
+    if(!f) return;
+    fprintf(f,"%d\n",sleep_minutes);
+    fclose(f);
+}
+static void sleep_fade_cancel(int restore) {
+    if(sleep_fade_vol>=0 && restore) SDL_AtomicSet(&volume,sleep_fade_vol);
+    sleep_fade_vol=-1;
+}
+static void sleep_arm(void) {
+    sleep_fade_cancel(1);
+    sleep_armed=sleep_minutes>0;
+    if(sleep_armed) sleep_deadline=SDL_GetTicks()+(Uint32)sleep_minutes*60000u;
+}
+static void sleep_load(void) {
+    FILE *f=fopen(ASSETS "sleep.txt","r");
+    if(!f) return;
+    int m=0;
+    if(fscanf(f,"%d",&m)==1)
+        for(int i=0;i<SLEEP_CHOICE_COUNT;i++) if(sleep_choices[i]==m) sleep_minutes=m;
+    fclose(f);
+}
+static void sleep_step(int delta) {
+    int idx=0;
+    for(int i=0;i<SLEEP_CHOICE_COUNT;i++) if(sleep_choices[i]==sleep_minutes) idx=i;
+    idx=((idx+delta)%SLEEP_CHOICE_COUNT+SLEEP_CHOICE_COUNT)%SLEEP_CHOICE_COUNT;
+    sleep_minutes=sleep_choices[idx];
+    sleep_save();
+    sleep_arm();
+    if(sleep_minutes>0) snprintf(message,sizeof(message),"Sleep timer: %d minutes",sleep_minutes);
+    else snprintf(message,sizeof(message),"Sleep timer off");
+}
+static int shuffle_on;
+static int shuffle_hist[64];
+static int shuffle_hist_count;
+static void shuffle_save(void) {
+    FILE *f=fopen(ASSETS "shuffle.txt","w");
+    if(!f) return;
+    fprintf(f,"%d\n",shuffle_on?1:0);
+    fclose(f);
+}
+static void shuffle_load(void) {
+    FILE *f=fopen(ASSETS "shuffle.txt","r");
+    if(!f) return;
+    int m=0;
+    if(fscanf(f,"%d",&m)==1) shuffle_on=m?1:0;
+    fclose(f);
+}
+static void shuffle_push(int idx) {
+    if(shuffle_hist_count<64) shuffle_hist[shuffle_hist_count++]=idx;
+    else { memmove(shuffle_hist,shuffle_hist+1,63*sizeof(int)); shuffle_hist[63]=idx; }
+}
+static int shuffle_next(void) {
+    if(library.count<=1 || playing<0) return -1;
+    int pick=playing;
+    for(int tries=0;tries<8 && pick==playing;tries++) pick=rand()%library.count;
+    return pick==playing?-1:pick;
+}
 /* One tuning step in the EQ view: a band row moves that band by one
  * dB; the preset row cycles the unified preset list (built-ins then
  * Custom 1-3; from an unmatched curve, cycling starts at Flat).
@@ -270,7 +569,7 @@ static void draw_art(SDL_Surface *screen,SDL_Surface *art,int x,int y,int w,int 
     }
     SDL_BlitSurface(art_cache,NULL,screen,&dst);
 }
-enum { B_UP=1,B_DOWN=2,B_LEFT=4,B_RIGHT=8,B_X=16,B_O=32,B_START=64,B_L1=128,B_R1=256,B_L2=512,B_R2=1024,B_TRI=2048,B_SQ=4096 };
+enum { B_UP=1,B_DOWN=2,B_LEFT=4,B_RIGHT=8,B_X=16,B_O=32,B_START=64,B_L1=128,B_R1=256,B_L2=512,B_R2=1024,B_TRI=2048,B_SQ=4096,B_SELECT=8192 };
 static unsigned pad_buttons(void) {
     static unsigned held[7]; padInfo2 info; unsigned combined=0;
     memset(&info,0,sizeof(info));
@@ -288,7 +587,7 @@ static unsigned pad_buttons(void) {
         if(data.len>0) held[port]=(data.BTN_UP?B_UP:0)|(data.BTN_DOWN?B_DOWN:0)|(data.BTN_LEFT?B_LEFT:0)|(data.BTN_RIGHT?B_RIGHT:0)|
         (data.BTN_CROSS?B_X:0)|(data.BTN_CIRCLE?B_O:0)|(data.BTN_START?B_START:0)|
         (data.BTN_L1?B_L1:0)|(data.BTN_R1?B_R1:0)|(data.BTN_L2?B_L2:0)|(data.BTN_R2?B_R2:0)|
-        (data.BTN_TRIANGLE?B_TRI:0)|(data.BTN_SQUARE?B_SQ:0);
+        (data.BTN_TRIANGLE?B_TRI:0)|(data.BTN_SQUARE?B_SQ:0)|(data.BTN_SELECT?B_SELECT:0);
         combined|=held[port];
     }
     return combined;
@@ -302,8 +601,10 @@ static void refresh_art_folder(const char *folder,int *count,int *selected) {
     if(*count<0) { *count=0; snprintf(message,sizeof(message),"Folder unavailable; choose another source"); }
 }
 static void scan_folder(const char *folder) {
-    stop_music(); snprintf(message,sizeof(message),"Scanning MP3 files...");
+    stop_music(); shuffle_hist_count=0; snprintf(message,sizeof(message),"Scanning MP3 files...");
     library_scan(&library,folder);
+    hydrate_plays();
+    apply_sort(NULL);
     snprintf(message,sizeof(message),"%d MP3 tracks%s%s",library.count,library.truncated?" (scan limit reached)":"",library.errors?" (some folders unavailable)":"");
 }
 /* --- OG Xbox menu reskin (visual only) ----------------------------------
@@ -489,7 +790,7 @@ static int yt_queue_start(const YtList *list,int from) {
 int main(int argc,char **argv) {
     (void)argc; (void)argv;
     SDL_Surface *screen=NULL,*background=NULL;
-    const char *nav[]={"Music","Visualizer","Artwork","Settings","Exit"};
+    const char *nav[]={"Music","Visualizer","Artwork","Settings","Radio","Exit"};
     const char *sources[]={"/dev_hdd0/music","/dev_hdd0","/dev_usb000","/dev_usb001"};
     char folder[NL_PATH]="/dev_hdd0/music";
     char art_folder[NL_PATH]="/dev_hdd0";
@@ -497,6 +798,8 @@ int main(int argc,char **argv) {
     int art_view=0,art_selection=0,art_count=0,art_sel=0,art_source=0,art_browse_view=0;
     int settings_selection=0,update_pending=0,settings_view=0,eq_selection=0;
     int yt_view=0,yt_count=0,yt_busy_kind=0;
+    int radio_sel=0;
+    Uint32 last_input=0;
     char yt_query[128]="";
     char yt_status[160]="";
     char upd_msg[160];
@@ -511,7 +814,8 @@ int main(int argc,char **argv) {
     int diagnostic_gallery_sweep=0;
 #endif
     SDL_AtomicSet(&volume,75);
-    eq_init(); eq_load(); viz_load();
+    eq_init(); eq_load(); viz_load(); shuffle_load(); sleep_load();
+    counts_load(); sort_load(); stations_load();
     if(NL_DIAGNOSTIC_START()) return 6;
     NL_TRACE("before-sdl-init");
     if(SDL_Init(display_init_flags()|SDL_INIT_AUDIO|SDL_INIT_TIMER)) return 1;
@@ -570,6 +874,9 @@ int main(int argc,char **argv) {
 #endif
     if(safety_start()) { stop_music(); return 7; }
     boot_ticks=SDL_GetTicks();
+    last_input=boot_ticks;
+    srand((unsigned)time(NULL));
+    sleep_arm();
     int yt_susp_prev=0; /* last draw-suspended state (OSK transition log) */
     while(running) {
         int update_ran=0;
@@ -640,6 +947,7 @@ int main(int argc,char **argv) {
              * dialog itself was already serviced above, before the
              * draw-suspended branch. Swallow app input. */
             pressed=0; held=0; previous=0;
+            last_input=start; /* typing in the OSK is not idling */
         } else {
             yt_worker_adopt_thumbs();   /* staged thumbnails become visible here, between draws */
             int kind=0,st=yt_worker_poll(&kind);
@@ -724,11 +1032,38 @@ int main(int argc,char **argv) {
         NL_TRACE("input-complete");
         if(held && SDL_TICKS_PASSED(start,repeat_at)) { pressed|=held&(B_UP|B_DOWN|B_L2|B_R2); repeat_at=start+180; }
         if(!held) repeat_at=start+350;
+        /* Idle screensaver (v1.19): after two minutes without input
+         * the menus give way to a clock screen (in the draw below).
+         * Any press wakes it and is swallowed, so the waking press
+         * never also triggers the control under it. The YouTube
+         * playing view and the fullscreen visualizer are exempt -
+         * one is a video, the other already moves. */
+        if(pressed) last_input=start;
+        int saver_on=(Uint32)(start-last_input)>120000u && !(section==0 && focus && view==3 && yt_view==4) && !(section==1 && focus);
+        if(saver_on && pressed) { saver_on=0; pressed=0; }
         if(pressed&B_L2) { if(section==3 && focus && settings_view==1) eq_adjust(eq_selection,-1); else change_volume(-5); }
         if(pressed&B_R2) { if(section==3 && focus && settings_view==1) eq_adjust(eq_selection,1); else change_volume(5); }
         if(pressed&B_START) toggle_pause();
-        if(pressed&B_L1) { if(playing>0) play_track(playing-1); }
-        if(pressed&B_R1) { if(!pc_mode && playing>=0 && playing+1<library.count) play_track(playing+1); }
+        if(pressed&B_L1) {
+            if(playing>0) {
+                if(shuffle_on && shuffle_hist_count>0) play_track(shuffle_hist[--shuffle_hist_count]);
+                else play_track(playing-1);
+            }
+        }
+        if(pressed&B_R1) {
+            if(!pc_mode && playing>=0) {
+                /* Same failed-pick trap as the finished-track path:
+                 * capture the current index before play_track can
+                 * reset it to -1, or the fallback replays track 0. */
+                int cur=playing;
+                int advanced=0;
+                if(shuffle_on && !yt_mode && library.count>1) {
+                    int pick=shuffle_next();
+                    if(pick>=0) { shuffle_push(cur); advanced=(play_track(pick)==0); }
+                }
+                if(!advanced && cur+1<library.count) play_track(cur+1);
+            }
+        }
         if(focus && (section==1 || (section==2 && art_view==1))) {
             if(pressed&B_LEFT) gallery_step(&gallery,-1,start);
             if(pressed&B_RIGHT) gallery_step(&gallery,1,start);
@@ -761,7 +1096,7 @@ int main(int argc,char **argv) {
                 if(strcmp(folder,sources[source])) { char *last=strrchr(folder,'/'); if(last) *last=0; refresh_folder(folder,&entry_count,&selection); }
                 else {view=0;selection=0;}
             } else if(focus && section==0 && view==3) {
-                if(yt_view==3) yt_view=2;
+                if(yt_view==3) yt_view=yt_info_from;
                 else if(yt_view==2) { yt_view=0; selection=0; }
                 else if(yt_view==0) { view=0; selection=0; }
             } else if(focus && section==0 && view==2) {view=0;selection=0;}
@@ -771,6 +1106,7 @@ int main(int argc,char **argv) {
         if(pressed&B_LEFT) {
             if(section==3 && focus && settings_view==1) eq_adjust(eq_selection,-1);
             else if(section==3 && focus && settings_selection==0) change_volume(-5);
+            else if(section==3 && focus && settings_selection==5) sleep_step(-1);
             else if(section==3 && focus) {}
             else if(section==0 && focus && view==0 && selection!=0 && selection!=4 && selection!=6) selection--;
             else focus=0;
@@ -778,14 +1114,15 @@ int main(int argc,char **argv) {
         if(pressed&B_RIGHT) {
             if(section==3 && focus && settings_view==1) eq_adjust(eq_selection,1);
             else if(section==3 && focus && settings_selection==0) change_volume(5);
+            else if(section==3 && focus && settings_selection==5) sleep_step(1);
             else if(section==3 && focus) {}
             else if(section==0 && focus && view==0 && selection!=3 && selection!=5 && selection!=7) selection++;
             else focus=1;
         }
         if(!focus) {
-            if(pressed&B_UP) section=(section+4)%5;
-            if(pressed&B_DOWN) section=(section+1)%5;
-            if(pressed&B_X) { if(section==4) running=0; else { focus=1; if(section==2) art_view=0; } }
+            if(pressed&B_UP) section=(section+5)%6;
+            if(pressed&B_DOWN) section=(section+1)%6;
+            if(pressed&B_X) { if(section==5) running=0; else { focus=1; if(section==2) art_view=0; } }
         } else if(section==0) {
             int rows=view==0?8:(view==1?entry_count+1:(view==3?(yt_view==0?4:(yt_view==2?yt_count:(yt_view==5?yt_playlist.count:(yt_view==6?yt_favorites.count:1)))):library.count));
             if(rows>0) {
@@ -812,9 +1149,24 @@ int main(int argc,char **argv) {
                     } else {
                         char target[NL_PATH];
                         if(!library_join(target,folder,entries[selection-1].name)) {
-                            scan_folder(folder); view=2; selection=0;
-                            for(int i=0;i<library.count;i++) if(!strcmp(target,library.tracks[i].path)) {selection=i;break;}
-                            if(library.count) play_track(selection);
+                            if(library_is_m3u_name(entries[selection-1].name)) {
+                                /* An .m3u becomes the play queue: the
+                                 * global library is replaced by the
+                                 * tracks it resolves to, so advance,
+                                 * L1/R1 and shuffle all apply. */
+                                stop_music(); shuffle_hist_count=0;
+                                int n=library_load_m3u(target,&library);
+                                if(n>0) {
+                                    hydrate_plays();
+                                    apply_sort(NULL);
+                                    view=2; selection=0;
+                                    if(play_track(0)==0) snprintf(message,sizeof(message),"Playlist loaded: %d tracks%s",n,library.truncated?" (list full)":"");
+                                } else snprintf(message,sizeof(message),"Playlist has no playable MP3s here");
+                            } else {
+                                scan_folder(folder); view=2; selection=0;
+                                for(int i=0;i<library.count;i++) if(!strcmp(target,library.tracks[i].path)) {selection=i;break;}
+                                if(library.count) play_track(selection);
+                            }
                         }
                     }
                 } else if(view==3) {
@@ -858,7 +1210,27 @@ int main(int argc,char **argv) {
                             else { yt_queue_clear(); snprintf(message,sizeof(message),"YouTube is busy"); }
                         } else snprintf(message,sizeof(message),"Nothing playable here - live entries are skipped in queues");
                     }
-                } else if(library.count) play_track(selection);
+                } else if(library.count) { shuffle_hist_count=0; play_track(selection); }
+            }
+            if(view!=3 && pressed&B_SQ) {
+                shuffle_on=!shuffle_on;
+                shuffle_save();
+                if(!shuffle_on) shuffle_hist_count=0;
+                snprintf(message,sizeof(message),"Shuffle %s",shuffle_on?"on":"off");
+            }
+            if(view==2 && pressed&B_SELECT) {
+                sort_mode=(sort_mode+1)%4;
+                sort_save();
+                apply_sort(&selection);
+                shuffle_hist_count=0;
+                snprintf(message,sizeof(message),"Sort: %s",sort_names[sort_mode]);
+            }
+            if(view==2 && pressed&B_TRI) {
+                /* Most Played replaces the queue with your top
+                 * tracks by play count, most played first. */
+                shuffle_hist_count=0;
+                play_most_played();
+                selection=0;
             }
             if(view==3 && (pressed&B_TRI || pressed&B_SQ)) {
                 /* Triangle files the picked video into the playlist,
@@ -928,10 +1300,11 @@ int main(int argc,char **argv) {
                     snprintf(message,sizeof(message),"Saved as %s - it joins the preset cycle",eq_user_preset_name[slot]);
                 }
             } else {
-            if(pressed&B_UP) settings_selection=(settings_selection+4)%5;
-            if(pressed&B_DOWN) settings_selection=(settings_selection+1)%5;
+            if(pressed&B_UP) settings_selection=(settings_selection+5)%6;
+            if(pressed&B_DOWN) settings_selection=(settings_selection+1)%6;
             if(pressed&B_X) {
                 if(settings_selection==4) { settings_view=1; eq_selection=0; }
+                else if(settings_selection==5) sleep_step(1);
                 else if(settings_selection==1) {
                     int ftp_state=ftp_server_status();
                     if(ftp_state==0 || ftp_state==-1) {
@@ -955,6 +1328,15 @@ int main(int argc,char **argv) {
                 snprintf(message,sizeof(message),"Visualizer: %s (Triangle switches)",visualizer_mode_name(viz_mode));
             }
             else if(pressed&B_X) toggle_pause();
+        } else if(section==4) {
+            if(station_count>0) {
+                if(pressed&B_UP) radio_sel=(radio_sel+station_count-1)%station_count;
+                if(pressed&B_DOWN) radio_sel=(radio_sel+1)%station_count;
+            }
+            if(pressed&B_X && station_count>0) {
+                if(radio_mode && radio_station==radio_sel) { stop_music(); snprintf(message,sizeof(message),"Radio stopped"); }
+                else play_radio_stream(radio_sel);
+            }
         }
         NL_INPUT(pressed,section,focus);
         if(pc_mode) {
@@ -962,15 +1344,68 @@ int main(int argc,char **argv) {
             int state=pc_audio_status();
             snprintf(message,sizeof(message),"%s",state<0?"PC disconnected. Choose PC Audio to stop, then reconnect.":status[state]);
         }
+        if(radio_mode && !audio) {
+            /* Still tuning in: open the decoder once the stream
+             * thread reports a full enough buffer, or give up
+             * cleanly when the connection dies first. */
+            int rs=radio_status();
+            if(rs==3) { safety_allow_seconds(30); radio_open_decoder(); }
+            else if(rs<0) { stop_music(); snprintf(message,sizeof(message),"Radio: could not connect"); }
+            else if(radio_station>=0) snprintf(message,sizeof(message),"Radio: %s %s...",rs==2?"buffering":"connecting",stations[radio_station].name);
+        }
+        if(radio_mode && audio && radio_status()<0) { stop_music(); snprintf(message,sizeof(message),"Radio: stream ended"); }
         if(ftp_take_gallery_dirty()) {
             /* The FTP thread only writes files; the gallery reload runs
              * here on the main thread, like Add artwork does. */
             gallery_close(&gallery); gallery_open(&gallery,ASSETS "art/gallery");
             snprintf(message,sizeof(message),"Gallery updated via FTP (%d / %d slides)",gallery.loaded,NL_GALLERY_SLIDES);
         }
+        if(sleep_armed) {
+            Uint32 now=SDL_GetTicks();
+            if((Sint32)(now-sleep_deadline)>=0) {
+                sleep_fade_cancel(1);
+                sleep_armed=0;
+                if(audio || pc_mode || yt_mode || radio_mode) {
+                    int was_yt=yt_mode;
+                    stop_music();
+                    /* Mirror every other YouTube stop path: leaving
+                     * yt_view at 4 with yt_mode cleared wedges the
+                     * playing view - no button exits it. Clearing
+                     * the queue also stops a playlist that is still
+                     * resolving from auto-starting after the fire. */
+                    if(was_yt) yt_view=3;
+                    yt_queue_clear();
+                    snprintf(message,sizeof(message),"Sleep timer - playback stopped");
+                } else if(yt_queue_active) {
+                    yt_queue_clear();
+                    snprintf(message,sizeof(message),"Sleep timer - queue cleared");
+                }
+            } else {
+                if(sleep_fade_vol>=0 && !audio) sleep_fade_cancel(1);
+                if(sleep_fade_vol>=0 && SDL_AtomicGet(&volume)!=sleep_fade_last) sleep_fade_cancel(0);
+                if(audio && !paused && sleep_fade_vol<0 && sleep_deadline-now<=10000u) {
+                    sleep_fade_vol=SDL_AtomicGet(&volume); sleep_fade_last=sleep_fade_vol;
+                }
+                if(sleep_fade_vol>=0 && audio) {
+                    int v=sleep_fade_vol*(int)(sleep_deadline-now)/10000;
+                    SDL_AtomicSet(&volume,v); sleep_fade_last=v;
+                }
+            }
+        }
         if(audio && !pc_mode && !yt_mode && SDL_AtomicGet(&finished)) {
-            int next=playing+1;
-            if(next<library.count) play_track(next); else {stop_music();snprintf(message,sizeof(message),"Playlist finished");}
+            /* A failed pick runs stop_music, which resets playing to
+             * -1; the fallback must advance from the track that just
+             * finished, not from -1 (which replayed track 0). */
+            int cur=playing;
+            int advanced=0;
+            if(shuffle_on && library.count>1) {
+                int pick=shuffle_next();
+                if(pick>=0) { shuffle_push(cur); advanced=(play_track(pick)==0); }
+            }
+            if(!advanced) {
+                int next=cur+1;
+                if(next<library.count) play_track(next); else {stop_music();snprintf(message,sizeof(message),"Playlist finished");}
+            }
         }
         float snapshot[SV_FFT]={0}; Spectrum spectrum;
         if(audio && !paused) {
@@ -994,8 +1429,21 @@ int main(int argc,char **argv) {
         static int yt_playing_prev;
         int yt_playing_entered=yt_playing_view && !yt_playing_prev;
         yt_playing_prev=yt_playing_view;
-        if(!yt_playing_view) draw_gc_background(screen);
-        if(yt_playing_view) {
+        if(!yt_playing_view && !saver_on) draw_gc_background(screen);
+        if(saver_on) {
+            /* Screensaver: black screen, big clock, what's playing.
+             * The text block alternates position every 30 seconds
+             * so no pixel holds the same image all night. */
+            char clockbuf[16]="Neon Lounge";
+            time_t t=time(NULL); struct tm *tmv=localtime(&t);
+            if(tmv) strftime(clockbuf,sizeof(clockbuf),"%H:%M",tmv);
+            int alt=(start/30000)&1;
+            int cx=alt?620:140, cy=alt?150:330;
+            ui_rect(screen,0,0,1280,720,0x000000);
+            ui_text(screen,cx,cy,42,0x9ede3c,clockbuf);
+            ui_text(screen,cx,cy+64,26,0xd8d8d8,radio_mode?(radio_station>=0?stations[radio_station].name:"Internet Radio"):(pc_mode?"PC Audio":(playing>=0?library.tracks[playing].name:"Neon Lounge")));
+            ui_text(screen,cx,cy+104,18,0x707070,"Press any button");
+        } else if(yt_playing_view) {
             /* Fullscreen video: black letterbox on entry, the
              * engine blits the due frame (or repaints the frozen
              * last one), then a minimal OSD. */
@@ -1035,18 +1483,23 @@ int main(int argc,char **argv) {
             ui_rect(screen,0,0,230,635,0x11160a);
             ui_text(screen,26,26,26,0xc4f09a,"NEON LOUNGE");
             draw_spinner(screen,start);
-            for(int i=0;i<5;i++) {
+            for(int i=0;i<6;i++) {
                 if(section==i) {
-                    if(focus) ui_rect(screen,11,196+i*72,208,60,0xd9ffb3);
-                    ui_rect(screen,14,199+i*72,202,54,focus?0x5c8a1e:0x2c4416);
-                    ui_rect(screen,14,199+i*72,4,54,0x9ede3c);
+                    if(focus) ui_rect(screen,11,196+i*66,208,60,0xd9ffb3);
+                    ui_rect(screen,14,199+i*66,202,54,focus?0x5c8a1e:0x2c4416);
+                    ui_rect(screen,14,199+i*66,4,54,0x9ede3c);
                 }
-                ui_text(screen,36,209+i*72,26,0xf2f7ff,nav[i]);
+                ui_text(screen,36,209+i*66,26,0xf2f7ff,nav[i]);
             }
             ui_text(screen,270,30,42,0xf2f7ff,nav[section]);
             if(update_notice[0]) ui_text(screen,880,36,26,0xffc94d,update_notice);
             if(section==0) {
-                ui_text(screen,274,88,18,0xa8c686,view==1?folder:(view==3?"YouTube | Search, trending and playback":"Your music | Internal HDD and USB"));
+                char sub[220];
+                if(view==2) snprintf(sub,sizeof(sub),"Your playlist | Shuffle %s | Sort: %s | Square shuffle - SELECT sort - Triangle most played",shuffle_on?"on":"off",sort_names[sort_mode]);
+                else if(view==1) snprintf(sub,sizeof(sub),"%s",folder);
+                else if(view==3) snprintf(sub,sizeof(sub),"YouTube | Search, trending and playback");
+                else snprintf(sub,sizeof(sub),"Your music | Internal HDD and USB");
+                ui_text(screen,274,88,18,0xa8c686,sub);
                 const char *home[]={"Music folder","Internal HDD","USB 0","USB 1","Current playlist","Start visualizer",pc_mode?"Disconnect PC Audio":"PC Audio - connect","YouTube"};
                 if(view==0 && background) {
                     ui_rect(screen,270,190,950,280,0x11160a);
@@ -1064,7 +1517,8 @@ int main(int argc,char **argv) {
                         y=row<4?130:((row==6||row==7)?546:496); w=row<4?230:470; pixels=row<4?18:26;
                     }
                     if(view==0) snprintf(label,sizeof(label),"%s",home[row]);
-                    else if(view==1) { if(!row) snprintf(label,sizeof(label),"[ Play this folder and subfolders ]"); else snprintf(label,sizeof(label),"%s%s",entries[row-1].directory?"[Folder] ":"",entries[row-1].name); }
+                    else if(view==1) { if(!row) snprintf(label,sizeof(label),"[ Play this folder and subfolders ]"); else snprintf(label,sizeof(label),"%s%s",entries[row-1].directory?"[Folder] ":(library_is_m3u_name(entries[row-1].name)?"[Playlist] ":""),entries[row-1].name); }
+                    else if(library.tracks[row].plays>0) snprintf(label,sizeof(label),"%s  (x%d)",library.tracks[row].name,library.tracks[row].plays);
                     else snprintf(label,sizeof(label),"%s",library.tracks[row].name);
                     draw_gc_tile(screen,x,y,w,view==0?(row<4?56:48):40,focus && selection==row);
                     ui_text(screen,x+14,y+(view==0?(row<4?16:9):4),pixels,0xf4f6ff,label);
@@ -1221,13 +1675,14 @@ int main(int argc,char **argv) {
                  * proven geometry. */
                 char ftp_label[64],ftp_info[160],ftp_addr[48];
                 int ftp_state=ftp_server_status();
-                int sfoff=settings_selection>3?1:0;
+                int sfoff=settings_selection<4?0:settings_selection-3;
                 if(sfoff==0) {
                 draw_gc_tile(screen,SET_X,SET_ROW_Y(0),SET_W,SET_TILE_H,focus && settings_selection==0);
                 ui_text(screen,SET_TEXT_X,SET_ROW_Y(0)+SET_LABEL_DY,26,0xffffff,"Playback volume");
                 ui_rect(screen,SET_TEXT_X,SET_BAR_Y(0),SET_BAR_W,SET_BAR_H,0x1c2b0e); ui_rect(screen,SET_TEXT_X,SET_BAR_Y(0),SDL_AtomicGet(&volume)*SET_BAR_W/100,SET_BAR_H,0x9ede3c);
                 ui_text(screen,SET_TEXT_X,SET_HINT_Y(0),18,0xcfe0bd,"Left / Right or L2 / R2 to adjust");
                 }
+                if(sfoff<=1) {
                 snprintf(ftp_label,sizeof(ftp_label),"FTP Server: %s",ftp_state==2?"On":(ftp_state==1?"Starting...":(ftp_state==-1?"Error":"Off")));
                 draw_gc_tile(screen,SET_X,SET_ROW_Y(1-sfoff),SET_W,SET_TILE_H,focus && settings_selection==1);
                 ui_text(screen,SET_TEXT_X,SET_ROW_Y(1-sfoff)+SET_LABEL_DY,26,0xffffff,ftp_label);
@@ -1240,6 +1695,7 @@ int main(int argc,char **argv) {
                 else
                     snprintf(ftp_info,sizeof(ftp_info),"Turn on to upload pictures from a PC, no USB drive needed");
                 ui_text(screen,SET_TEXT_X,SET_DESC_Y(1-sfoff),18,0xa8c686,ftp_info);
+                }
                 draw_gc_tile(screen,SET_X,SET_ROW_Y(2-sfoff),SET_W,SET_TILE_H,focus && settings_selection==2);
                 ui_text(screen,SET_TEXT_X,SET_ROW_Y(2-sfoff)+SET_LABEL_DY,26,0xffffff,"Check for updates");
                 ui_text(screen,SET_TEXT_X,SET_DESC_Y(2-sfoff),18,0xa8c686,"Neon Lounge " NL_VERSION " | Updates from GitHub");
@@ -1254,7 +1710,7 @@ int main(int argc,char **argv) {
                  * through the Equalizer tile - the header badge at
                  * the top of the screen still shows it then. */
                 if(update_notice[0] && sfoff==0) ui_text(screen,SET_TEXT_X,SET_DESC_Y(3)+2*SET_LINE,18,0xffc94d,update_notice);
-                if(sfoff==1) {
+                if(sfoff>=1) {
                 {
                     char eq_label[96];
                     snprintf(eq_label,sizeof(eq_label),"Equalizer: %s",eq_is_flat()?"Off (flat)":eq_preset_label());
@@ -1263,17 +1719,52 @@ int main(int argc,char **argv) {
                     ui_text(screen,SET_TEXT_X,SET_DESC_Y(4-sfoff),18,0xa8c686,"Five-band EQ for MP3, PC Audio and YouTube | X to tune");
                 }
                 }
+                if(sfoff==2) {
+                    char sleep_label[96];
+                    if(sleep_minutes>0 && sleep_armed) {
+                        Sint32 diff=(Sint32)(sleep_deadline-SDL_GetTicks());
+                        if(diff<0) diff=0;
+                        snprintf(sleep_label,sizeof(sleep_label),"Sleep timer: %d min (%u:%02u left)",sleep_minutes,(unsigned)(diff/60000),(unsigned)((diff/1000)%60));
+                    } else if(sleep_minutes>0) snprintf(sleep_label,sizeof(sleep_label),"Sleep timer: %d min (not running - X re-arms)",sleep_minutes);
+                    else snprintf(sleep_label,sizeof(sleep_label),"Sleep timer: Off");
+                    draw_gc_tile(screen,SET_X,SET_ROW_Y(5-sfoff),SET_W,SET_TILE_H,focus && settings_selection==5);
+                    ui_text(screen,SET_TEXT_X,SET_ROW_Y(5-sfoff)+SET_LABEL_DY,26,0xffffff,sleep_label);
+                    ui_text(screen,SET_TEXT_X,SET_DESC_Y(5-sfoff),18,0xa8c686,"Stops playback when it runs out, fading the last 10 seconds | X or Left / Right to set");
                 }
-            } else if(section==4) ui_text(screen,280,150,26,0xffffff,"Press X to exit Neon Lounge");
+                }
+            } else if(section==4) {
+                ui_text(screen,274,88,18,0xa8c686,"MP3 streams | X Play / stop | Add your own: USRDIR/stations.txt (name<TAB>url)");
+                if(!station_count) ui_text(screen,280,170,26,0xcfe0bd,"No stations found");
+                int rows=station_count<9?station_count:9;
+                int first=radio_sel>7?radio_sel-7:0;
+                if(first>station_count-rows) first=station_count-rows;
+                if(first<0) first=0;
+                for(int row=first;row<station_count && row<first+9;row++) {
+                    int y=138+(row-first)*44; char label[300];
+                    if(radio_mode && row==radio_station) {
+                        int rs=radio_status();
+                        snprintf(label,sizeof(label),"%s  (%s)",stations[row].name,rs==3?"playing":(rs==2?"buffering":(rs==1?"connecting":"on")));
+                    } else snprintf(label,sizeof(label),"%s",stations[row].name);
+                    draw_gc_tile(screen,266,y,960,40,focus && radio_sel==row);
+                    ui_text(screen,280,y+4,26,0xf4f6ff,label);
+                }
+            } else if(section==5) ui_text(screen,280,150,26,0xffffff,"Press X to exit Neon Lounge");
         }
         if(!yt_playing_view) {
         ui_rect(screen,0,608,1280,112,0x11160a);
-        ui_text(screen,28,620,26,0xffffff,pc_mode?"PC Audio | Live stereo stream":(playing>=0?library.tracks[playing].name:"No track selected"));
+        ui_text(screen,28,620,26,0xffffff,radio_mode?(radio_station>=0?stations[radio_station].name:"Internet Radio"):(pc_mode?"PC Audio | Live stereo stream":(playing>=0?library.tracks[playing].name:"No track selected")));
         ui_text(screen,28,656,18,0xa8c686,message);
         char volume_label[30]; snprintf(volume_label,sizeof(volume_label),"Volume %d%%",SDL_AtomicGet(&volume));
         ui_text(screen,1000,622,26,0x9ede3c,volume_label);
         char fps_label[24]; snprintf(fps_label,sizeof(fps_label),"%u FPS",fps);
         ui_text(screen,1000,656,18,0xa8c686,fps_label);
+        if(sleep_armed) {
+            Sint32 diff=(Sint32)(sleep_deadline-SDL_GetTicks());
+            if(diff<0) diff=0;
+            char sleep_label[32];
+            snprintf(sleep_label,sizeof(sleep_label),"Sleep %u:%02u",(unsigned)(diff/60000),(unsigned)((diff/1000)%60));
+            ui_text(screen,830,656,18,0x9ede3c,sleep_label);
+        }
         ui_text(screen,28,689,18,0xa8c686,"X Select   O Back   START Pause   L1/R1 Track   L2/R2 Volume");
         }
         NL_TRACE("before-present");
