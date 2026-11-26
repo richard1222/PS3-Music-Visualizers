@@ -46,7 +46,7 @@ static int run(void *p) {
         curl_easy_setopt(c,CURLOPT_FAILONERROR,1L);
         curl_easy_setopt(c,CURLOPT_CONNECTTIMEOUT,8L);
         curl_easy_setopt(c,CURLOPT_NOSIGNAL,1L);
-        curl_easy_setopt(c,CURLOPT_USERAGENT,"NeonLounge/1.19");
+        curl_easy_setopt(c,CURLOPT_USERAGENT,"NeonLounge/1.20");
         curl_easy_setopt(c,CURLOPT_WRITEFUNCTION,receive);
         curl_easy_setopt(c,CURLOPT_XFERINFOFUNCTION,progress);
         curl_easy_setopt(c,CURLOPT_NOPROGRESS,0L);

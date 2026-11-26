@@ -163,3 +163,27 @@ int library_load_m3u(const char *path,Library *out) {
     fclose(f);
     return out->count;
 }
+
+/* --- .m3u playlist export (v1.20) -------------------------------------
+ * The mirror of the import above: the current queue written as one
+ * absolute path per line. Absolute paths keep the file meaningful
+ * wherever it is opened from; the importer resolves them as-is. */
+int library_save_m3u(const char *path,const Library *library) {
+    if(!path || !*path || !library) return -1;
+    FILE *f=fopen(path,"w");
+    if(!f) return -1;
+    fprintf(f,"#EXTM3U\n");
+    for(int i=0;i<library->count;i++) fprintf(f,"%s\n",library->tracks[i].path);
+    fclose(f);
+    return library->count;
+}
+
+/* --- Repeat-mode advance (v1.20) ---------------------------------------
+ * One place decides what a natural track end does, so the rule the
+ * UI applies is the rule the host tests assert. */
+int queue_advance(int cur,int count,int repeat_mode) {
+    if(count<=0 || cur<0 || cur>=count) return -1;
+    if(repeat_mode==NL_REPEAT_ONE) return cur;
+    if(cur+1<count) return cur+1;
+    return repeat_mode==NL_REPEAT_ALL?0:-1;
+}

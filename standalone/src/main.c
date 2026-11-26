@@ -30,6 +30,8 @@
 #include "yt_player.h"
 #include "ftp_server.h"
 #include "radio.h"
+#include "podcast.h"
+#include "donate.h"
 #include "settings_layout.h"
 #include "eq.h"
 #include "frame_health.h"
@@ -50,7 +52,11 @@ static SDL_atomic_t decoded_blocks;
 #endif
 static float pcm[SV_FFT];
 static unsigned pcm_position;
-static int pc_mode,yt_mode,radio_mode;
+static int pc_mode,yt_mode,radio_mode,pod_mode;
+/* Podcast glue defined with the podcast block below; stop_music is
+ * the universal stop, so it saves the episode position through this
+ * hook before the stream engine shuts down. */
+static void pod_before_stop(void);
 static SDL_Surface *art_cache,*art_cache_source;
 static int rate=48000,channels=2,playing=-1,paused,decoder_open;
 static char message[160]="Choose a folder or an MP3 to begin";
@@ -171,7 +177,10 @@ static void audio_callback(void *userdata,Uint8 *stream,int bytes) {
         if(channels==2 && i+1<count) v=(v+(float)samples[i+1]/32768.0f)*0.5f;
         pcm[pcm_position++%SV_FFT]=v;
     }
-    if(!pc_mode && !yt_mode && !radio_mode && count<(size_t)bytes/2) SDL_AtomicSet(&finished,1);
+    /* A podcast episode ends like a file track once its download is
+     * finished (or has failed): before that, a short read is just an
+     * underrun on a growing cache file, not the end. */
+    if(!pc_mode && !yt_mode && !radio_mode && (!pod_mode || podcast_download_terminal()) && count<(size_t)bytes/2) SDL_AtomicSet(&finished,1);
 }
 static void stop_music(void) {
     safety_stage(1);
@@ -189,6 +198,8 @@ static void stop_music(void) {
     yt_mode=0;
     if(radio_mode) radio_stop();
     radio_mode=0;
+    if(pod_mode) pod_before_stop();
+    pod_mode=0;
     if(decoder_open) mp3dec_ex_close(&decoder);
     decoder_open=0;
     if(music_file) fclose(music_file);
@@ -377,6 +388,119 @@ static void play_most_played(void) {
     }
     snprintf(message,sizeof(message),"Most played: %d tracks",library.count);
 }
+/* --- Podcasts (v1.20) ---------------------------------------------------
+ * Subscriptions live in USRDIR/podcasts.txt, resume positions in
+ * USRDIR/podcast_positions.txt (both via podcast.c). Playback mirrors
+ * radio: play_podcast_episode starts the engine, and once it reports
+ * a full enough cache the main loop opens the shared decoder on it
+ * (podcast_open_decoder) - the same device-open shape as play_track,
+ * so EQ, spectrum, pause, the sleep timer and the screensaver all
+ * work unchanged. The position clock is wall time spent unpaused
+ * since the (resumed) start; it is saved every few seconds and on
+ * every stop through pod_before_stop. */
+static PodSub pod_subs[POD_SUB_MAX];
+static int pod_sub_count;
+static PodEpisode pod_eps[POD_EP_MAX];
+static int pod_ep_count;
+static char pod_show_title[128];
+static PodSearchResult pod_results[POD_SEARCH_MAX];
+static int pod_result_count;
+static PodPosStore pod_positions;
+static int pod_episode=-1;          /* pod_eps index on air, -1 none */
+static char pod_ep_url[512];        /* its URL: the positions key */
+static char pod_ep_title[192];
+static int pod_base_seconds;        /* resume offset this play began at */
+static Uint32 pod_play_ticks;       /* when this play (re)started */
+static Uint32 pod_pause_accum;      /* ms spent paused since then */
+static Uint32 pod_pause_since;      /* tick the current pause began */
+static Uint32 pod_last_save;
+static void pod_positions_save(void) { podcast_pos_save(ASSETS "podcast_positions.txt",&pod_positions); }
+static void pod_subs_save(void) { podcast_subs_save(ASSETS "podcasts.txt",pod_subs,pod_sub_count); }
+static void pod_load(void) {
+    pod_sub_count=podcast_subs_load(ASSETS "podcasts.txt",pod_subs,POD_SUB_MAX);
+    podcast_pos_load(ASSETS "podcast_positions.txt",&pod_positions);
+}
+static int pod_current_seconds(void) {
+    if(!pod_mode) return 0;
+    Uint32 now=SDL_GetTicks();
+    Uint32 paused_total=pod_pause_accum+(pod_pause_since?now-pod_pause_since:0);
+    return pod_base_seconds+(int)((now-pod_play_ticks-paused_total)/1000);
+}
+static void pod_save_position(void) {
+    if(!pod_mode || !pod_ep_url[0]) return;
+    int sec=pod_current_seconds();
+    if(sec>5) { podcast_pos_set(&pod_positions,pod_ep_url,sec,-1); pod_positions_save(); }
+}
+static void pod_before_stop(void) {
+    pod_save_position();
+    podcast_stream_stop();
+}
+static size_t pod_io_read(void *buf,size_t size,void *userdata) {
+    (void)userdata;
+    return podcast_read(buf,size);
+}
+static int pod_io_seek(uint64_t position,void *userdata) {
+    (void)userdata;
+    return podcast_stream_seek((long)position);
+}
+static void play_podcast_episode(int idx) {
+    char ca[768],cache_rel[64],cache_path[768];
+    if(idx<0 || idx>=pod_ep_count) return;
+    PodEpisode *ep=&pod_eps[idx];
+    if(!ep->playable) { snprintf(message,sizeof(message),"AAC episode - Neon Lounge plays MP3 podcasts only"); return; }
+    stop_music();
+    podcast_cache_name(ep->url,cache_rel,sizeof(cache_rel));
+    snprintf(cache_path,sizeof(cache_path),ASSETS "%s",cache_rel);
+    snprintf(ca,sizeof(ca),"%scerts/cacert.pem",ASSETS);
+    if(podcast_stream_start(ep->url,cache_path,ca)) {
+        snprintf(message,sizeof(message),"Podcast failed to start");
+        return;
+    }
+    pod_mode=1;
+    pod_episode=idx;
+    snprintf(pod_ep_url,sizeof(pod_ep_url),"%s",ep->url);
+    snprintf(pod_ep_title,sizeof(pod_ep_title),"%s",ep->title);
+    pod_base_seconds=0; pod_pause_accum=0; pod_pause_since=0;
+    pod_play_ticks=SDL_GetTicks(); pod_last_save=pod_play_ticks;
+    counts_bump(cache_path);  /* episodes join Most Played by cache file */
+    snprintf(message,sizeof(message),"Podcast: connecting...");
+}
+static int podcast_open_decoder(void) {
+    SDL_AudioSpec want,got;
+    memset(&decoder,0,sizeof(decoder));
+    decoder_io.read=pod_io_read; decoder_io.read_data=NULL;
+    decoder_io.seek=pod_io_seek; decoder_io.seek_data=NULL;
+    decoder_open=1;
+    if(mp3dec_ex_open_cb(&decoder,&decoder_io,MP3D_DO_NOT_SCAN)) {
+        stop_music(); snprintf(message,sizeof(message),"Podcast: not an MP3 episode"); return -1;
+    }
+    rate=decoder.info.hz; channels=decoder.info.channels;
+    if(rate<8000 || rate>48000 || channels<1 || channels>2) {
+        stop_music(); snprintf(message,sizeof(message),"Podcast: unsupported episode format"); return -1;
+    }
+    /* Resume: minimp3's seek is a stream byte offset, so the saved
+     * seconds become bytes through the episode's average bitrate.
+     * The target is clamped inside the downloaded prefix - seeking
+     * past it would land in unwritten cache. */
+    const PodPos *saved=podcast_pos_find(&pod_positions,pod_ep_url);
+    if(saved && saved->seconds>10 && !saved->played && decoder.info.bitrate_kbps>0) {
+        long bytes_per_sec=(long)decoder.info.bitrate_kbps*125;
+        long bytepos=(long)saved->seconds*bytes_per_sec;
+        long avail=podcast_downloaded();
+        if(bytepos>avail-32768) bytepos=avail>32768?avail-32768:0;
+        if(bytepos>0 && !mp3dec_ex_seek(&decoder,(uint64_t)bytepos))
+            pod_base_seconds=(int)(bytepos/bytes_per_sec);
+    }
+    pod_play_ticks=SDL_GetTicks(); pod_pause_accum=0; pod_pause_since=0; pod_last_save=pod_play_ticks;
+    SDL_zero(want); want.freq=rate; want.channels=channels;
+    want.format=AUDIO_S16SYS; want.samples=2048; want.callback=audio_callback;
+    audio=SDL_OpenAudioDevice(NULL,0,&want,&got,0);
+    if(!audio) { stop_music(); snprintf(message,sizeof(message),"Audio device unavailable"); return -1; }
+    paused=0;
+    snprintf(message,sizeof(message),"Podcast | %s | %d Hz",pod_show_title[0]?pod_show_title:"Episode",rate);
+    SDL_PauseAudioDevice(audio,0);
+    return 0;
+}
 /* EQ settings persist in USRDIR/eq.txt, the same plain-file pattern
  * as the app's other small state. Format v2 (v1.18): line 1 is the
  * legacy five whole-dB gains, unchanged, so a v1.17 file loads
@@ -539,6 +663,29 @@ static int shuffle_next(void) {
     for(int tries=0;tries<8 && pick==playing;tries++) pick=rand()%library.count;
     return pick==playing?-1:pick;
 }
+/* --- Repeat modes & sleep at end of track (v1.20) -----------------------
+ * Repeat (Off/All/One) persists in USRDIR/repeat.txt (the viz.txt
+ * pattern) and is cycled with SELECT in the Music home and playlist
+ * views; the advance itself is queue_advance in library.c, so the
+ * host tests pin the rule. Repeat One wins over shuffle. Sleep at
+ * end of track is a one-shot: it is not persisted, it just stops
+ * whatever finishes next - a queue track, an episode, a video. */
+static int repeat_mode;
+static const char *repeat_names[]={"Off","All","One"};
+static void repeat_save(void) {
+    FILE *f=fopen(ASSETS "repeat.txt","w");
+    if(!f) return;
+    fprintf(f,"%d\n",repeat_mode);
+    fclose(f);
+}
+static void repeat_load(void) {
+    FILE *f=fopen(ASSETS "repeat.txt","r");
+    if(!f) return;
+    int m=0;
+    if(fscanf(f,"%d",&m)==1 && m>=NL_REPEAT_OFF && m<=NL_REPEAT_ONE) repeat_mode=m;
+    fclose(f);
+}
+static int sleep_after_track;
 /* One tuning step in the EQ view: a band row moves that band by one
  * dB; the preset row cycles the unified preset list (built-ins then
  * Custom 1-3; from an unmatched curve, cycling starts at Flat).
@@ -789,8 +936,8 @@ static int yt_queue_start(const YtList *list,int from) {
 }
 int main(int argc,char **argv) {
     (void)argc; (void)argv;
-    SDL_Surface *screen=NULL,*background=NULL;
-    const char *nav[]={"Music","Visualizer","Artwork","Settings","Radio","Exit"};
+    SDL_Surface *screen=NULL,*background=NULL,*donate_qr=NULL;
+    const char *nav[]={"Music","Visualizer","Artwork","Settings","Radio","Podcasts","Donate","Exit"};
     const char *sources[]={"/dev_hdd0/music","/dev_hdd0","/dev_usb000","/dev_usb001"};
     char folder[NL_PATH]="/dev_hdd0/music";
     char art_folder[NL_PATH]="/dev_hdd0";
@@ -799,6 +946,14 @@ int main(int argc,char **argv) {
     int settings_selection=0,update_pending=0,settings_view=0,eq_selection=0;
     int yt_view=0,yt_count=0,yt_busy_kind=0;
     int radio_sel=0;
+    /* Podcasts view state (v1.20): pod_view 0 shows, 1 episodes,
+     * 2 search results. The fetch/search jobs run after a presented
+     * frame, on the update check's two-step pattern. osk_target
+     * routes the system keyboard: 0 YouTube search, 1 podcast
+     * search, 2 podcast feed URL. */
+    int pod_view=0,pod_sel=0,pod_show=0,pod_fetch_pending=0,pod_search_pending=0;
+    int osk_target=0;
+    char pod_query[128]="";
     Uint32 last_input=0;
     char yt_query[128]="";
     char yt_status[160]="";
@@ -816,6 +971,9 @@ int main(int argc,char **argv) {
     SDL_AtomicSet(&volume,75);
     eq_init(); eq_load(); viz_load(); shuffle_load(); sleep_load();
     counts_load(); sort_load(); stations_load();
+    repeat_load();
+    mkdir(ASSETS "podcache",0777);  /* episode cache; fine if it exists */
+    pod_load();
     if(NL_DIAGNOSTIC_START()) return 6;
     NL_TRACE("before-sdl-init");
     if(SDL_Init(display_init_flags()|SDL_INIT_AUDIO|SDL_INIT_TIMER)) return 1;
@@ -852,6 +1010,7 @@ int main(int argc,char **argv) {
     NL_TRACE("surface-ready");
     if(ui_font_open(ASSETS "fonts/NotoSans-Regular.ttf")) { display_close(); runtime_shutdown(); SDL_Quit(); return 3; }
     background=SDL_LoadBMP(ASSETS "art/background.bmp");
+    donate_qr=SDL_LoadBMP(ASSETS "art/donate_qr.bmp");  /* NULL is fine: text-only donate screen */
     xbox_frames_load(screen);
     gallery_open(&gallery,ASSETS "art/gallery");
     NL_EVENT_VALUE("gallery-loaded",gallery.loaded);
@@ -902,25 +1061,60 @@ int main(int argc,char **argv) {
                 /* A close-path deadline expired outside the poll:
                  * the dialog was force-closed; surface it exactly
                  * like the poll's own -2 below. */
-                snprintf(yt_status,sizeof(yt_status),"%s",yt_osk_last_error());
-                snprintf(message,sizeof(message),"Keyboard error - see the YouTube view");
+                if(osk_target) { osk_target=0; snprintf(message,sizeof(message),"Keyboard error"); }
+                else {
+                    snprintf(yt_status,sizeof(yt_status),"%s",yt_osk_last_error());
+                    snprintf(message,sizeof(message),"Keyboard error - see the YouTube view");
+                }
             } else {
                 char text[128];
                 int r=yt_osk_poll(text,sizeof(text));
                 if(r==1) {
-                    snprintf(yt_query,sizeof(yt_query),"%s",text);
-                    yt_queue_clear();
-                    if(yt_job_search(yt_query)==0) { yt_view=1; yt_busy_kind=YT_JOB_SEARCH; snprintf(yt_status,sizeof(yt_status),"Searching for \"%s\"...",yt_query); }
-                    else snprintf(message,sizeof(message),"YouTube is busy");
+                    if(osk_target==1) {
+                        /* Podcast search: the iTunes lookup runs
+                         * after a presented frame, like a feed load. */
+                        osk_target=0;
+                        snprintf(pod_query,sizeof(pod_query),"%s",text);
+                        pod_search_pending=1;
+                        snprintf(message,sizeof(message),"Searching podcasts for \"%s\"...",pod_query);
+                    } else if(osk_target==2) {
+                        /* Podcast feed URL: subscribe it directly. */
+                        osk_target=0;
+                        char *u=text;
+                        while(*u==' ') u++;
+                        if(strncmp(u,"http",4)) snprintf(message,sizeof(message),"That does not look like a feed URL");
+                        else {
+                            int dup=0;
+                            for(int i=0;i<pod_sub_count;i++) if(!strcmp(pod_subs[i].url,u)) dup=1;
+                            if(dup) snprintf(message,sizeof(message),"Already subscribed to that feed");
+                            else if(pod_sub_count>=POD_SUB_MAX) snprintf(message,sizeof(message),"Podcast list is full");
+                            else {
+                                PodSub *s=&pod_subs[pod_sub_count++];
+                                memset(s,0,sizeof(*s));
+                                snprintf(s->url,sizeof(s->url),"%s",u);
+                                pod_subs_save();
+                                pod_view=0; pod_sel=pod_sub_count+1;
+                                snprintf(message,sizeof(message),"Feed added - X on it loads its episodes");
+                            }
+                        }
+                    } else {
+                        snprintf(yt_query,sizeof(yt_query),"%s",text);
+                        yt_queue_clear();
+                        if(yt_job_search(yt_query)==0) { yt_view=1; yt_busy_kind=YT_JOB_SEARCH; snprintf(yt_status,sizeof(yt_status),"Searching for \"%s\"...",yt_query); }
+                        else snprintf(message,sizeof(message),"YouTube is busy");
+                    }
                 }
-                else if(r==-1) snprintf(message,sizeof(message),"Search cancelled");
+                else if(r==-1) { osk_target=0; snprintf(message,sizeof(message),"Search cancelled"); }
                 else if(r==-2) {
                     /* The keyboard closed without a usable finish
                      * (an OSK close-path deadline fired). Surface it
                      * in the YouTube view like an open failure, not
                      * only in the footer. */
-                    snprintf(yt_status,sizeof(yt_status),"%s",yt_osk_last_error());
-                    snprintf(message,sizeof(message),"Keyboard error - see the YouTube view");
+                    if(osk_target) { osk_target=0; snprintf(message,sizeof(message),"Keyboard error"); }
+                    else {
+                        snprintf(yt_status,sizeof(yt_status),"%s",yt_osk_last_error());
+                        snprintf(message,sizeof(message),"Keyboard error - see the YouTube view");
+                    }
                 }
             }
         }
@@ -1005,12 +1199,21 @@ int main(int argc,char **argv) {
                 stop_music(); yt_view=3; snprintf(yt_status,sizeof(yt_status),"%s",err);
             } else if(pst==YT_PLAYER_ENDED) {
                 stop_music();
+                if(sleep_after_track) {
+                    /* Sleep at end of track (v1.20): a video ending
+                     * counts as the track ending - stop for good. */
+                    sleep_after_track=0;
+                    yt_queue_clear();
+                    yt_view=3;
+                    snprintf(yt_status,sizeof(yt_status),"Sleep at end of track - playback stopped");
+                    snprintf(message,sizeof(message),"Sleep at end of track - playback stopped");
+                }
                 /* Natural end is the ONLY auto-advance trigger: a
                  * queue moves to its next entry through the same
                  * worker extract job a manual pick uses. A manual
                  * stop (the O handler below) clears the queue
                  * instead, so the two can never be confused here. */
-                if(yt_queue_active && yt_queue_index+1<yt_queue_count) {
+                else if(yt_queue_active && yt_queue_index+1<yt_queue_count) {
                     yt_queue_index++;
                     yt_current=yt_queue[yt_queue_index];
                     if(yt_job_extract(yt_current.videoId)==0) { yt_view=1; yt_busy_kind=YT_JOB_EXTRACT; snprintf(yt_status,sizeof(yt_status),"Up next: %s",yt_current.title); }
@@ -1101,6 +1304,7 @@ int main(int argc,char **argv) {
                 else if(yt_view==0) { view=0; selection=0; }
             } else if(focus && section==0 && view==2) {view=0;selection=0;}
             else if(focus && section==3 && settings_view==1) settings_view=0;
+            else if(focus && section==5 && pod_view!=0) { pod_view=0; pod_sel=0; }
             else focus=0;
         }
         if(pressed&B_LEFT) {
@@ -1120,10 +1324,15 @@ int main(int argc,char **argv) {
             else focus=1;
         }
         if(!focus) {
-            if(pressed&B_UP) section=(section+5)%6;
-            if(pressed&B_DOWN) section=(section+1)%6;
-            if(pressed&B_X) { if(section==5) running=0; else { focus=1; if(section==2) art_view=0; } }
+            if(pressed&B_UP) section=(section+7)%8;
+            if(pressed&B_DOWN) section=(section+1)%8;
+            if(pressed&B_X) { if(section==7) running=0; else { focus=1; if(section==2) art_view=0; } }
         } else if(section==0) {
+            if((pressed&B_SELECT) && view==0) {
+                repeat_mode=(repeat_mode+1)%3;
+                repeat_save();
+                snprintf(message,sizeof(message),"Repeat: %s",repeat_names[repeat_mode]);
+            }
             int rows=view==0?8:(view==1?entry_count+1:(view==3?(yt_view==0?4:(yt_view==2?yt_count:(yt_view==5?yt_playlist.count:(yt_view==6?yt_favorites.count:1)))):library.count));
             if(rows>0) {
                 if(view==0) {
@@ -1300,11 +1509,19 @@ int main(int argc,char **argv) {
                     snprintf(message,sizeof(message),"Saved as %s - it joins the preset cycle",eq_user_preset_name[slot]);
                 }
             } else {
-            if(pressed&B_UP) settings_selection=(settings_selection+5)%6;
-            if(pressed&B_DOWN) settings_selection=(settings_selection+1)%6;
+            if(pressed&B_UP) settings_selection=(settings_selection+6)%7;
+            if(pressed&B_DOWN) settings_selection=(settings_selection+1)%7;
             if(pressed&B_X) {
                 if(settings_selection==4) { settings_view=1; eq_selection=0; }
                 else if(settings_selection==5) sleep_step(1);
+                else if(settings_selection==6) {
+                    /* Save queue as .m3u (v1.20): the current queue
+                     * written where the music browser can find it. */
+                    if(!library.count) snprintf(message,sizeof(message),"Queue is empty - nothing to save");
+                    else if(library_save_m3u("/dev_hdd0/music/Neon Queue.m3u",&library)>0)
+                        snprintf(message,sizeof(message),"Saved queue: %d tracks to /dev_hdd0/music/Neon Queue.m3u",library.count);
+                    else snprintf(message,sizeof(message),"Could not save the queue - is /dev_hdd0/music there?");
+                }
                 else if(settings_selection==1) {
                     int ftp_state=ftp_server_status();
                     if(ftp_state==0 || ftp_state==-1) {
@@ -1319,6 +1536,10 @@ int main(int argc,char **argv) {
                     if(yt_worker_poll(NULL)==YT_STATE_RUNNING) snprintf(message,sizeof(message),"YouTube is busy - reset the session when it finishes");
                     else { yt_reset_visitor(); snprintf(message,sizeof(message),"YouTube session reset - a fresh one is minted on next use"); }
                 }
+            }
+            if(pressed&B_SQ && settings_selection==5) {
+                sleep_after_track=!sleep_after_track;
+                snprintf(message,sizeof(message),"Sleep at end of track: %s",sleep_after_track?"on - one more track, then stop":"off");
             }
             }
         } else if(section==1) {
@@ -1337,6 +1558,59 @@ int main(int argc,char **argv) {
                 if(radio_mode && radio_station==radio_sel) { stop_music(); snprintf(message,sizeof(message),"Radio stopped"); }
                 else play_radio_stream(radio_sel);
             }
+        } else if(section==5) {
+            int rows=pod_view==0?pod_sub_count+2:(pod_view==1?pod_ep_count:pod_result_count);
+            if(rows>0) {
+                if(pressed&B_UP) pod_sel=(pod_sel+rows-1)%rows;
+                if(pressed&B_DOWN) pod_sel=(pod_sel+1)%rows;
+            }
+            if(pressed&B_X) {
+                if(pod_view==0) {
+                    /* osk_target is armed only when the keyboard
+                     * actually opened: a failed open must not leave
+                     * a stale target that reroutes the next YouTube
+                     * search result into the podcast views. */
+                    if(pod_sel==0) { if(yt_osk_open(pod_query)) snprintf(message,sizeof(message),"Keyboard unavailable"); else osk_target=1; }
+                    else if(pod_sel==1) { if(yt_osk_open("")) snprintf(message,sizeof(message),"Keyboard unavailable"); else osk_target=2; }
+                    else if(pod_sel-2<pod_sub_count) {
+                        pod_show=pod_sel-2;
+                        pod_fetch_pending=1;
+                        pod_sel=0;
+                        snprintf(message,sizeof(message),"Loading episodes...");
+                    }
+                } else if(pod_view==1) {
+                    if(pod_sel<pod_ep_count) {
+                        if(pod_mode && pod_episode==pod_sel) { stop_music(); snprintf(message,sizeof(message),"Podcast stopped - position saved"); }
+                        else play_podcast_episode(pod_sel);
+                    }
+                } else if(pod_sel<pod_result_count) {
+                    PodSearchResult *r=&pod_results[pod_sel];
+                    int dup=0;
+                    for(int i=0;i<pod_sub_count;i++) if(!strcmp(pod_subs[i].url,r->feed_url)) dup=1;
+                    if(dup) snprintf(message,sizeof(message),"Already subscribed: %s",r->name);
+                    else if(pod_sub_count>=POD_SUB_MAX) snprintf(message,sizeof(message),"Podcast list is full");
+                    else {
+                        PodSub *s=&pod_subs[pod_sub_count++];
+                        memset(s,0,sizeof(*s));
+                        snprintf(s->title,sizeof(s->title),"%s",r->name);
+                        snprintf(s->url,sizeof(s->url),"%s",r->feed_url);
+                        pod_subs_save();
+                        pod_view=0; pod_sel=0;
+                        snprintf(message,sizeof(message),"Subscribed: %s",r->name);
+                    }
+                }
+            }
+            if(pressed&B_SQ && pod_view==0 && pod_sel>=2 && pod_sel-2<pod_sub_count) {
+                /* Square unsubscribes the picked show. The episode
+                 * cache and resume positions stay: resubscribing
+                 * later picks up exactly where things were. */
+                int si=pod_sel-2;
+                memmove(&pod_subs[si],&pod_subs[si+1],(size_t)(pod_sub_count-si-1)*sizeof(PodSub));
+                pod_sub_count--;
+                pod_subs_save();
+                if(pod_sel>=pod_sub_count+2) pod_sel=pod_sub_count+1;
+                snprintf(message,sizeof(message),"Unsubscribed");
+            }
         }
         NL_INPUT(pressed,section,focus);
         if(pc_mode) {
@@ -1354,6 +1628,24 @@ int main(int argc,char **argv) {
             else if(radio_station>=0) snprintf(message,sizeof(message),"Radio: %s %s...",rs==2?"buffering":"connecting",stations[radio_station].name);
         }
         if(radio_mode && audio && radio_status()<0) { stop_music(); snprintf(message,sizeof(message),"Radio: stream ended"); }
+        if(pod_mode && !audio) {
+            /* Still downloading: open the decoder once the file is
+             * fully down (state 4), open it early once enough has
+             * landed (state 3), or give up when the download dies. */
+            int ps=podcast_stream_status();
+            if(ps==3 || ps==4) { safety_allow_seconds(30); podcast_open_decoder(); }
+            else if(ps<0) { stop_music(); snprintf(message,sizeof(message),"Podcast: could not download the episode"); }
+            else if(pod_episode>=0 && pod_episode<pod_ep_count) snprintf(message,sizeof(message),"Podcast: downloading %s... %ld KB",pod_eps[pod_episode].title,podcast_downloaded()/1024);
+        }
+        if(pod_mode && audio) {
+            /* Wall-clock resume bookkeeping: track pause spans so
+             * pod_current_seconds() stays honest, and persist the
+             * position every few seconds while playing. */
+            if(paused && !pod_pause_since) pod_pause_since=start;
+            if(!paused && pod_pause_since) { pod_pause_accum+=start-pod_pause_since; pod_pause_since=0; }
+            if(!paused && (int)(start-pod_last_save)>5000) { pod_last_save=start; pod_save_position(); }
+        }
+        if(pod_mode && audio && podcast_stream_status()<0) { stop_music(); snprintf(message,sizeof(message),"Podcast: download ended"); }
         if(ftp_take_gallery_dirty()) {
             /* The FTP thread only writes files; the gallery reload runs
              * here on the main thread, like Add artwork does. */
@@ -1365,7 +1657,7 @@ int main(int argc,char **argv) {
             if((Sint32)(now-sleep_deadline)>=0) {
                 sleep_fade_cancel(1);
                 sleep_armed=0;
-                if(audio || pc_mode || yt_mode || radio_mode) {
+                if(audio || pc_mode || yt_mode || radio_mode || pod_mode) {
                     int was_yt=yt_mode;
                     stop_music();
                     /* Mirror every other YouTube stop path: leaving
@@ -1398,13 +1690,37 @@ int main(int argc,char **argv) {
              * finished, not from -1 (which replayed track 0). */
             int cur=playing;
             int advanced=0;
-            if(shuffle_on && library.count>1) {
-                int pick=shuffle_next();
-                if(pick>=0) { shuffle_push(cur); advanced=(play_track(pick)==0); }
-            }
-            if(!advanced) {
-                int next=cur+1;
-                if(next<library.count) play_track(next); else {stop_music();snprintf(message,sizeof(message),"Playlist finished");}
+            if(pod_mode) {
+                /* A podcast episode ended naturally: mark it played
+                 * and clear its resume point, then stop. stop_music()
+                 * saves the (final) position first via pod_before_stop;
+                 * the played mark overwrites it right after. */
+                char ep_url[1024];
+                snprintf(ep_url,sizeof(ep_url),"%s",pod_ep_url);
+                stop_music();
+                podcast_pos_set(&pod_positions,ep_url,0,1);
+                pod_positions_save();
+                if(sleep_after_track) { sleep_after_track=0; snprintf(message,sizeof(message),"Episode finished - sleep at end of track"); }
+                else snprintf(message,sizeof(message),"Episode finished");
+            } else if(sleep_after_track) {
+                /* Sleep at end of track (v1.20): one-shot, set from
+                 * the Settings sleep row with Square. */
+                sleep_after_track=0;
+                stop_music();
+                snprintf(message,sizeof(message),"Sleep at end of track - playback stopped");
+            } else {
+                if(repeat_mode==NL_REPEAT_ONE && cur>=0) {
+                    advanced=(play_track(cur)==0);
+                    if(!advanced) SDL_AtomicSet(&finished,0);
+                }
+                if(!advanced && shuffle_on && library.count>1) {
+                    int pick=shuffle_next();
+                    if(pick>=0) { shuffle_push(cur); advanced=(play_track(pick)==0); }
+                }
+                if(!advanced) {
+                    int next=queue_advance(cur,library.count,repeat_mode);
+                    if(next>=0) play_track(next); else {stop_music();snprintf(message,sizeof(message),"Playlist finished");}
+                }
             }
         }
         float snapshot[SV_FFT]={0}; Spectrum spectrum;
@@ -1441,7 +1757,7 @@ int main(int argc,char **argv) {
             int cx=alt?620:140, cy=alt?150:330;
             ui_rect(screen,0,0,1280,720,0x000000);
             ui_text(screen,cx,cy,42,0x9ede3c,clockbuf);
-            ui_text(screen,cx,cy+64,26,0xd8d8d8,radio_mode?(radio_station>=0?stations[radio_station].name:"Internet Radio"):(pc_mode?"PC Audio":(playing>=0?library.tracks[playing].name:"Neon Lounge")));
+            ui_text(screen,cx,cy+64,26,0xd8d8d8,pod_mode?pod_ep_title:(radio_mode?(radio_station>=0?stations[radio_station].name:"Internet Radio"):(pc_mode?"PC Audio":(playing>=0?library.tracks[playing].name:"Neon Lounge"))));
             ui_text(screen,cx,cy+104,18,0x707070,"Press any button");
         } else if(yt_playing_view) {
             /* Fullscreen video: black letterbox on entry, the
@@ -1475,6 +1791,7 @@ int main(int argc,char **argv) {
                  * bass/rms/peak ride along for the v1.18 modes. */
                 Spectrum vs=spectrum;
                 memcpy(vs.bands,smooth,sizeof(smooth));
+                if(viz_mode==VIZ_WAVEFORM) visualizer_set_waveform(snapshot,SV_FFT);
                 visualizer_draw(screen,&vs,viz_mode,(int64_t)time(NULL),start);
             }
             ui_rect(screen,24,18,650,42,0x0d1206);
@@ -1483,22 +1800,34 @@ int main(int argc,char **argv) {
             ui_rect(screen,0,0,230,635,0x11160a);
             ui_text(screen,26,26,26,0xc4f09a,"NEON LOUNGE");
             draw_spinner(screen,start);
-            for(int i=0;i<6;i++) {
+            for(int i=0;i<8;i++) {
+                /* v1.20: eight entries (Podcasts and Donate joined)
+                 * on a tighter pitch so all tiles still end above
+                 * the footer, with room for the corner clock. */
                 if(section==i) {
-                    if(focus) ui_rect(screen,11,196+i*66,208,60,0xd9ffb3);
-                    ui_rect(screen,14,199+i*66,202,54,focus?0x5c8a1e:0x2c4416);
-                    ui_rect(screen,14,199+i*66,4,54,0x9ede3c);
+                    if(focus) ui_rect(screen,11,190+i*47,208,42,0xd9ffb3);
+                    ui_rect(screen,14,193+i*47,202,36,focus?0x5c8a1e:0x2c4416);
+                    ui_rect(screen,14,193+i*47,4,36,0x9ede3c);
                 }
-                ui_text(screen,36,209+i*66,26,0xf2f7ff,nav[i]);
+                ui_text(screen,36,198+i*47,22,0xf2f7ff,nav[i]);
+            }
+            {
+                /* Corner clock (v1.20): menu views only - this draw
+                 * branch never runs for the fullscreen visualizer,
+                 * the YouTube playing view or the screensaver. */
+                char clockbuf[16]="--:--";
+                time_t t=time(NULL); struct tm *tmv=localtime(&t);
+                if(tmv) strftime(clockbuf,sizeof(clockbuf),"%H:%M",tmv);
+                ui_text(screen,36,576,20,0xa8c686,clockbuf);
             }
             ui_text(screen,270,30,42,0xf2f7ff,nav[section]);
             if(update_notice[0]) ui_text(screen,880,36,26,0xffc94d,update_notice);
             if(section==0) {
                 char sub[220];
-                if(view==2) snprintf(sub,sizeof(sub),"Your playlist | Shuffle %s | Sort: %s | Square shuffle - SELECT sort - Triangle most played",shuffle_on?"on":"off",sort_names[sort_mode]);
+                if(view==2) snprintf(sub,sizeof(sub),"Your playlist | Shuffle %s | Repeat %s | Sort: %s | Square shuffle - SELECT sort - Triangle most played",shuffle_on?"on":"off",repeat_names[repeat_mode],sort_names[sort_mode]);
                 else if(view==1) snprintf(sub,sizeof(sub),"%s",folder);
                 else if(view==3) snprintf(sub,sizeof(sub),"YouTube | Search, trending and playback");
-                else snprintf(sub,sizeof(sub),"Your music | Internal HDD and USB");
+                else snprintf(sub,sizeof(sub),"Your music | Internal HDD and USB | Repeat: %s (SELECT cycles)",repeat_names[repeat_mode]);
                 ui_text(screen,274,88,18,0xa8c686,sub);
                 const char *home[]={"Music folder","Internal HDD","USB 0","USB 1","Current playlist","Start visualizer",pc_mode?"Disconnect PC Audio":"PC Audio - connect","YouTube"};
                 if(view==0 && background) {
@@ -1696,10 +2025,12 @@ int main(int argc,char **argv) {
                     snprintf(ftp_info,sizeof(ftp_info),"Turn on to upload pictures from a PC, no USB drive needed");
                 ui_text(screen,SET_TEXT_X,SET_DESC_Y(1-sfoff),18,0xa8c686,ftp_info);
                 }
+                if(sfoff<=2) {
                 draw_gc_tile(screen,SET_X,SET_ROW_Y(2-sfoff),SET_W,SET_TILE_H,focus && settings_selection==2);
                 ui_text(screen,SET_TEXT_X,SET_ROW_Y(2-sfoff)+SET_LABEL_DY,26,0xffffff,"Check for updates");
                 ui_text(screen,SET_TEXT_X,SET_DESC_Y(2-sfoff),18,0xa8c686,"Neon Lounge " NL_VERSION " | Updates from GitHub");
-                ui_text(screen,SET_TEXT_X,SET_DESC_Y(2-sfoff)+SET_LINE,18,0xcfe0bd,"MP3 playback | HDD, USB, PC Audio and YouTube");
+                ui_text(screen,SET_TEXT_X,SET_DESC_Y(2-sfoff)+SET_LINE,18,0xcfe0bd,"MP3 playback | HDD, USB, PC Audio, YouTube and Podcasts");
+                }
                 draw_gc_tile(screen,SET_X,SET_ROW_Y(3-sfoff),SET_W,SET_TILE_H,focus && settings_selection==3);
                 ui_text(screen,SET_TEXT_X,SET_ROW_Y(3-sfoff)+SET_LABEL_DY,26,0xffffff,"Reset YouTube session");
                 ui_text(screen,SET_TEXT_X,SET_DESC_Y(3-sfoff),18,0xa8c686,"Clears the saved anonymous YouTube session if sign-in checks misbehave");
@@ -1719,7 +2050,7 @@ int main(int argc,char **argv) {
                     ui_text(screen,SET_TEXT_X,SET_DESC_Y(4-sfoff),18,0xa8c686,"Five-band EQ for MP3, PC Audio and YouTube | X to tune");
                 }
                 }
-                if(sfoff==2) {
+                if(sfoff>=2) {
                     char sleep_label[96];
                     if(sleep_minutes>0 && sleep_armed) {
                         Sint32 diff=(Sint32)(sleep_deadline-SDL_GetTicks());
@@ -1730,6 +2061,17 @@ int main(int argc,char **argv) {
                     draw_gc_tile(screen,SET_X,SET_ROW_Y(5-sfoff),SET_W,SET_TILE_H,focus && settings_selection==5);
                     ui_text(screen,SET_TEXT_X,SET_ROW_Y(5-sfoff)+SET_LABEL_DY,26,0xffffff,sleep_label);
                     ui_text(screen,SET_TEXT_X,SET_DESC_Y(5-sfoff),18,0xa8c686,"Stops playback when it runs out, fading the last 10 seconds | X or Left / Right to set");
+                    char sat_label[96];
+                    snprintf(sat_label,sizeof(sat_label),"Sleep at end of track: %s | Square toggles - stops when the current track ends",sleep_after_track?"ON":"off");
+                    ui_text(screen,SET_TEXT_X,SET_DESC_Y(5-sfoff)+SET_LINE,18,0xcfe0bd,sat_label);
+                }
+                if(sfoff==3) {
+                    draw_gc_tile(screen,SET_X,SET_ROW_Y(6-sfoff),SET_W,SET_TILE_H,focus && settings_selection==6);
+                    ui_text(screen,SET_TEXT_X,SET_ROW_Y(6-sfoff)+SET_LABEL_DY,26,0xffffff,"Save queue as playlist");
+                    ui_text(screen,SET_TEXT_X,SET_DESC_Y(6-sfoff),18,0xa8c686,"Writes the current queue to /dev_hdd0/music/Neon Queue.m3u | X to save");
+                    char q_label[64];
+                    snprintf(q_label,sizeof(q_label),"%d tracks in the queue",library.count);
+                    ui_text(screen,SET_TEXT_X,SET_DESC_Y(6-sfoff)+SET_LINE,18,0xcfe0bd,q_label);
                 }
                 }
             } else if(section==4) {
@@ -1748,11 +2090,83 @@ int main(int argc,char **argv) {
                     draw_gc_tile(screen,266,y,960,40,focus && radio_sel==row);
                     ui_text(screen,280,y+4,26,0xf4f6ff,label);
                 }
-            } else if(section==5) ui_text(screen,280,150,26,0xffffff,"Press X to exit Neon Lounge");
+            } else if(section==5) {
+                if(pod_view==0) {
+                    ui_text(screen,274,88,18,0xa8c686,"Podcasts | X opens a show | Square unsubscribes | Episodes stream as MP3 and resume where you left off");
+                    const char *acts[]={"Search podcasts (iTunes)","Add a feed by URL"};
+                    for(int i=0;i<2;i++) {
+                        int y=138+i*44;
+                        draw_gc_tile(screen,266,y,960,40,focus && pod_sel==i);
+                        ui_text(screen,280,y+4,26,0xf4f6ff,acts[i]);
+                    }
+                    if(!pod_sub_count) ui_text(screen,280,240,26,0xcfe0bd,"No podcasts yet - search or add a feed URL");
+                    int rows=pod_sub_count<7?pod_sub_count:7;
+                    int first=pod_sel-2>5?pod_sel-2-5:0;
+                    if(first>pod_sub_count-rows) first=pod_sub_count-rows;
+                    if(first<0) first=0;
+                    for(int row=first;row<pod_sub_count && row<first+7;row++) {
+                        int y=226+(row-first)*44;
+                        draw_gc_tile(screen,266,y,960,40,focus && pod_sel==row+2);
+                        ui_text(screen,280,y+4,26,0xf4f6ff,pod_subs[row].title[0]?pod_subs[row].title:pod_subs[row].url);
+                    }
+                } else if(pod_view==1) {
+                    char sub2[300];
+                    snprintf(sub2,sizeof(sub2),"%s | X Play / stop | O back to shows",pod_subs[pod_show].title[0]?pod_subs[pod_show].title:"Podcast");
+                    ui_text(screen,274,88,18,0xa8c686,sub2);
+                    if(!pod_ep_count) ui_text(screen,280,170,26,0xcfe0bd,"No episodes in this feed");
+                    int rows=pod_ep_count<9?pod_ep_count:9;
+                    int first=pod_sel>7?pod_sel-7:0;
+                    if(first>pod_ep_count-rows) first=pod_ep_count-rows;
+                    if(first<0) first=0;
+                    for(int row=first;row<pod_ep_count && row<first+9;row++) {
+                        int y=138+(row-first)*44;
+                        char label[340];
+                        const PodPos *pp=podcast_pos_find(&pod_positions,pod_eps[row].url);
+                        if(!pod_eps[row].playable) snprintf(label,sizeof(label),"%s  [AAC - cannot play]",pod_eps[row].title);
+                        else if(pod_mode && row==pod_episode) snprintf(label,sizeof(label),"%s  [playing]",pod_eps[row].title);
+                        else if(pp && pp->played) snprintf(label,sizeof(label),"%s  [played]",pod_eps[row].title);
+                        else if(pp && pp->seconds>5) snprintf(label,sizeof(label),"%s  [resume %d:%02d]",pod_eps[row].title,pp->seconds/60,pp->seconds%60);
+                        else snprintf(label,sizeof(label),"%s",pod_eps[row].title);
+                        draw_gc_tile(screen,266,y,960,40,focus && pod_sel==row);
+                        ui_text(screen,280,y+4,26,0xf4f6ff,label);
+                    }
+                    if(pod_mode) {
+                        char dl[128];
+                        int ps=podcast_stream_status();
+                        if(ps==4) snprintf(dl,sizeof(dl),"Episode downloaded: %ld KB",podcast_downloaded()/1024);
+                        else if(ps>=0) snprintf(dl,sizeof(dl),"Downloading: %ld KB",podcast_downloaded()/1024);
+                        else snprintf(dl,sizeof(dl),"Download stopped");
+                        ui_text(screen,280,556,18,0xa8c686,dl);
+                    }
+                } else {
+                    ui_text(screen,274,88,18,0xa8c686,"Search results | X subscribes | O back");
+                    if(!pod_result_count) ui_text(screen,280,170,26,0xcfe0bd,"No results");
+                    int rows=pod_result_count<9?pod_result_count:9;
+                    int first=pod_sel>7?pod_sel-7:0;
+                    if(first>pod_result_count-rows) first=pod_result_count-rows;
+                    if(first<0) first=0;
+                    for(int row=first;row<pod_result_count && row<first+9;row++) {
+                        int y=138+(row-first)*44;
+                        char label[340];
+                        snprintf(label,sizeof(label),"%s%s%s",pod_results[row].name,pod_results[row].artist[0]?" - ":"",pod_results[row].artist);
+                        draw_gc_tile(screen,266,y,960,40,focus && pod_sel==row);
+                        ui_text(screen,280,y+4,26,0xf4f6ff,label);
+                    }
+                }
+            } else if(section==6) {
+                ui_text(screen,274,88,18,0xa8c686,"Neon Lounge is free - donations keep the updates coming");
+                ui_text(screen,280,150,32,0xffffff,DONATE_THANKS);
+                ui_text(screen,280,196,22,0xcfe0bd,DONATE_THANKS2);
+                if(donate_qr) draw_art(screen,donate_qr,300,300,300,300);
+                else ui_text(screen,300,330,22,0xcfe0bd,"(QR code image missing)");
+                ui_text(screen,640,300,32,0x9ede3c,"Donate with PayPal:");
+                ui_text(screen,640,352,30,0xffffff,DONATE_URL);
+                ui_text(screen,640,404,20,0xa8c686,"Scan the code with your phone, or type the link into a browser.");
+            } else if(section==7) ui_text(screen,280,150,26,0xffffff,"Press X to exit Neon Lounge");
         }
         if(!yt_playing_view) {
         ui_rect(screen,0,608,1280,112,0x11160a);
-        ui_text(screen,28,620,26,0xffffff,radio_mode?(radio_station>=0?stations[radio_station].name:"Internet Radio"):(pc_mode?"PC Audio | Live stereo stream":(playing>=0?library.tracks[playing].name:"No track selected")));
+        ui_text(screen,28,620,26,0xffffff,pod_mode?pod_ep_title:(radio_mode?(radio_station>=0?stations[radio_station].name:"Internet Radio"):(pc_mode?"PC Audio | Live stereo stream":(playing>=0?library.tracks[playing].name:"No track selected"))));
         ui_text(screen,28,656,18,0xa8c686,message);
         char volume_label[30]; snprintf(volume_label,sizeof(volume_label),"Volume %d%%",SDL_AtomicGet(&volume));
         ui_text(screen,1000,622,26,0x9ede3c,volume_label);
@@ -1796,6 +2210,42 @@ int main(int argc,char **argv) {
                 }
                 safety_allow_seconds(10);
             }
+            if(pod_fetch_pending) {
+                /* Episode list load, after a presented "Loading
+                 * episodes..." frame, like the update check. The
+                 * fetch blocks this thread on curl. */
+                pod_fetch_pending=0;
+                safety_allow_seconds(150);
+                char feed_title[256]="";
+                int n=podcast_fetch_feed(pod_subs[pod_show].url,ASSETS "certs/cacert.pem",pod_eps,POD_EP_MAX,feed_title,sizeof(feed_title));
+                safety_allow_seconds(10);
+                if(n>=0) {
+                    pod_ep_count=n;
+                    pod_view=1; pod_sel=0;
+                    if(feed_title[0] && strcmp(pod_subs[pod_show].title,feed_title)) {
+                        snprintf(pod_subs[pod_show].title,sizeof(pod_subs[pod_show].title),"%s",feed_title);
+                        pod_subs_save();
+                    }
+                    snprintf(pod_show_title,sizeof(pod_show_title),"%s",pod_subs[pod_show].title);
+                    if(pod_mode) {
+                        /* The episode array was just replaced: re-pin
+                         * the playing episode by URL so its row tags
+                         * and X-to-stop keep tracking it. */
+                        pod_episode=-1;
+                        for(int i=0;i<pod_ep_count;i++) if(!strcmp(pod_eps[i].url,pod_ep_url)) { pod_episode=i; break; }
+                    }
+                    snprintf(message,sizeof(message),"%s: %d episodes",pod_subs[pod_show].title[0]?pod_subs[pod_show].title:"Podcast",n);
+                } else snprintf(message,sizeof(message),"Could not load that feed - check the URL");
+            }
+            if(pod_search_pending) {
+                pod_search_pending=0;
+                safety_allow_seconds(60);
+                int n=podcast_search(pod_query,ASSETS "certs/cacert.pem",pod_results,POD_SEARCH_MAX);
+                safety_allow_seconds(10);
+                if(n>0) { pod_result_count=n; pod_view=2; pod_sel=0; snprintf(message,sizeof(message),"%d podcasts found - X subscribes",n); }
+                else if(n==0) snprintf(message,sizeof(message),"No podcasts found for \"%s\"",pod_query);
+                else snprintf(message,sizeof(message),"Podcast search failed - check the connection");
+            }
         }
         Uint32 elapsed=SDL_GetTicks()-start;
         if(!update_ran && frame_health_update(&health,elapsed)) {
@@ -1824,7 +2274,7 @@ int main(int argc,char **argv) {
     yt_osk_shutdown();
     yt_worker_stop();
     update_net_shutdown();
-    SDL_FreeSurface(art_cache); SDL_FreeSurface(background); ui_font_close(); display_close(); runtime_shutdown();
+    SDL_FreeSurface(art_cache); SDL_FreeSurface(background); SDL_FreeSurface(donate_qr); ui_font_close(); display_close(); runtime_shutdown();
     safety_stop();
     SDL_Quit();
     NL_TRACE("cleanup-complete");

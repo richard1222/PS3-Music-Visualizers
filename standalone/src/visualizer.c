@@ -10,9 +10,53 @@
 #define VIZ_PALE    0xd9ffb3
 
 const char *visualizer_mode_name(int mode) {
-    static const char *names[VIZ_MODE_COUNT]={"Spectrum Bars","Peak Rain","Jewel Pulse","Radial Sunburst"};
+    static const char *names[VIZ_MODE_COUNT]={"Spectrum Bars","Peak Rain","Jewel Pulse","Radial Sunburst","Waveform"};
     if(mode<0 || mode>=VIZ_MODE_COUNT) mode=VIZ_BARS;
     return names[mode];
+}
+
+static float wave_samples[1024];
+static int wave_count;
+void visualizer_set_waveform(const float *samples,int count) {
+    if(!samples || count<=0) { wave_count=0; return; }
+    if(count>1024) count=1024;
+    for(int i=0;i<count;i++) {
+        float v=samples[i];
+        if(!isfinite(v)) v=0;
+        if(v>1) v=1; if(v<-1) v=-1;
+        wave_samples[i]=v;
+    }
+    wave_count=count;
+}
+static void draw_waveform(SDL_Surface *screen,const Spectrum *sp) {
+    /* The raw PCM trace across the middle of the screen, oscilloscope
+     * style: a center line, the trace in jewel green, and a pale
+     * mirror of the loudest excursion per column so transients read
+     * at a glance. The bottom strip carries a simple level bar. */
+    const int x0=44,x1=1236,cy=320,amp=140;
+    ui_rect(screen,32,150,1216,360,VIZ_PANEL);
+    ui_line(screen,x0,cy,x1,cy,VIZ_BASE);
+    if(wave_count>1) {
+        const int cols=298;
+        int step=wave_count/cols;
+        if(step<1) step=1;
+        int prevx=x0,prevy=cy+(int)(wave_samples[0]*(float)amp);
+        for(int i=1;i<cols;i++) {
+            int idx=i*step;
+            if(idx>=wave_count) idx=wave_count-1;
+            int x=x0+i*(x1-x0)/cols;
+            int y=cy+(int)(wave_samples[idx]*(float)amp);
+            ui_line(screen,prevx,prevy,x,y,VIZ_ACCENT);
+            prevx=x; prevy=y;
+        }
+    }
+    ui_rect(screen,32,524,1216,80,VIZ_PANEL);
+    float rms=sp->rms;
+    if(!isfinite(rms) || rms<0) rms=0;
+    if(rms>1) rms=1;
+    ui_rect(screen,44,556,1192,16,VIZ_BASE);
+    ui_rect(screen,44,556,(int)(1192*rms),16,VIZ_JEWEL);
+    ui_text(screen,48,540,18,VIZ_ACCENT,"Level");
 }
 
 static float band_value(const Spectrum *sp,int i) {
@@ -120,6 +164,7 @@ void visualizer_draw(SDL_Surface *screen,const Spectrum *spectrum,int mode,int64
         case VIZ_PEAK_RAIN: draw_bars(screen,spectrum,1,ticks); break;
         case VIZ_JEWEL:     draw_jewel(screen,spectrum,ticks); break;
         case VIZ_SUNBURST:  draw_sunburst(screen,spectrum); break;
+        case VIZ_WAVEFORM:  draw_waveform(screen,spectrum); break;
         case VIZ_BARS:
         default:            draw_bars(screen,spectrum,0,ticks); break;
     }
