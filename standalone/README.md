@@ -1,6 +1,6 @@
 # Neon Lounge
 
-**Current version: 1.19** — [GitHub release](https://github.com/richard1222/PS3-Music-Visualizers/releases/tag/neon-lounge-1.19) · [Brewology listing](https://store.brewology.com/ps3/neon-lounge/)
+**Current version: 1.20** — [GitHub release](https://github.com/richard1222/PS3-Music-Visualizers/releases/tag/neon-lounge-1.20) · [Brewology listing](https://store.brewology.com/ps3/neon-lounge/)
 
 A standalone native PS3 music-player app (title ID `SVIZ00001`), built with
 PSL1GHT, SDL2, minimp3 and the RSX/GCM display backend. This is the app track
@@ -16,6 +16,9 @@ theme, with a spinning mini Xbox console in the menu.
   history-aware queue, and every play is counted — the playlist view builds
   a Most Played queue from your top 100. `.m3u` / `.m3u8` playlist files
   appear in the browser as `[Playlist]` entries and load as the play queue.
+  Repeat modes (off / repeat all / repeat one) apply to local music,
+  podcasts and YouTube alike, and Settings can save the current queue as
+  an `.m3u` playlist file.
 - Internet Radio (Radio section): eleven built-in stations — nine SomaFM
   channels (Groove Salad, Lush, Secret Agent, Drone Zone, DEF CON Radio,
   Boot Liquor, Sonic Universe, Underground 80s, Ill Street Lounge), Radio
@@ -26,13 +29,21 @@ theme, with a spinning mini Xbox console in the menu.
   favorite; playlists and favorites persist between sessions.
 - PC Audio: stream whatever is playing on a Windows PC on the same LAN
   (see the PC Audio section below).
+- Podcasts (Podcasts section): subscribe to any show by RSS feed URL
+  (typed in-app, or listed in `USRDIR/podcasts.txt`), or search the
+  iTunes podcast directory from inside the app — no account or API key
+  needed. Episodes list newest-first and stream through the same EQ and
+  visualizers as everything else. Playback positions are saved as you
+  listen (`USRDIR/podcast_positions.txt`), so an episode resumes where
+  you stopped it. Episodes stream as MP3; shows that publish only
+  AAC/`.m4a` episodes are marked unplayable instead of failing silently.
 - A real 5-band parametric EQ (+/-12 dB per band) with six built-in presets
   (Flat, Bass Boost, Treble Boost, Vocal, Bright, Warm) and three custom
   slots you can save yourself. The EQ applies to local music, radio,
   YouTube and PC Audio alike.
-- Audio-reactive visualizers — Bars, Peak Rain, Jewel Pulse and Radial
-  Sunburst — over a 7-slide artwork gallery (12-second auto-advance,
-  Left/Right to step).
+- Audio-reactive visualizers — Bars, Peak Rain, Jewel Pulse, Radial
+  Sunburst and Waveform (an oscilloscope-style trace) — over a 7-slide
+  artwork gallery (12-second auto-advance, Left/Right to step).
 - Artwork options (Artwork section): view the gallery, add BMP artwork from
   HDD/USB (1280x720 or smaller, 8 MB max, 7 slides max), remove the current
   artwork (moved to a backup folder, not deleted), and a list of sites to
@@ -40,7 +51,9 @@ theme, with a spinning mini Xbox console in the menu.
   A built-in FTP server accepts artwork uploads with the same rules.
 - Sleep timer (Settings): Off / 15 / 30 / 45 / 60 / 90 minutes, with a
   10-second volume fade-out before playback stops, and a countdown in the
-  footer. An idle screensaver (clock + what's playing, repositioned every
+  footer. Sleep at end of track instead stops playback exactly when the
+  current song or episode finishes. Menu screens show a clock in the
+  corner. An idle screensaver (clock + what's playing, repositioned every
   30 seconds against burn-in) takes over after two minutes without input;
   videos and the visualizer are exempt.
 - Check for updates (Settings section): fetches `standalone/update.json`
@@ -49,6 +62,9 @@ theme, with a spinning mini Xbox console in the menu.
   and places it in `/dev_hdd0/packages/` so it can be installed from the
   XMB Package Manager. The app cannot replace its own running program
   file, so updates are delivered as a package instead of an EBOOT swap.
+- Donate (sidebar): if Neon Lounge has earned a spot on your XMB, you can
+  support development at https://paypal.me/iphoneuser1111 — the Donate
+  screen also shows a QR code of that link for scanning with a phone.
 
 Controls: X select / play, O back, START pause, L1/R1 previous/next track,
 L2/R2 volume, Left/Right artwork (in the gallery) and volume (in Settings),
@@ -66,7 +82,7 @@ cd standalone
 make           # builds neon_lounge.self
 make pkg       # builds neon_lounge.pkg
 make host-test # host unit tests (spectrum, library, display guard, system
-               # state, thread stacks, clock, update)
+               # state, thread stacks, clock, update, podcast, queue)
 make host-tls-test # local HTTPS integration tests; requires host libcurl,
                    # Python 3 and OpenSSL
 ```

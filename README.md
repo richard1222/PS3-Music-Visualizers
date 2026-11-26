@@ -2,13 +2,13 @@
 
 Home of **Neon Lounge**, a standalone music player for the PlayStation 3, by **Richard1222 / Saber** — plus the built-in Visual Player resource research that started this repo.
 
-## Neon Lounge — current version 1.19
+## Neon Lounge — current version 1.20
 
-A native PS3 music app (title ID `SVIZ00001`) with an original-Xbox-dashboard look: play your MP3 library from HDD/USB, stream internet radio, and watch YouTube music videos — all decoded on the console, all run through a real 5-band parametric EQ and audio-reactive visualizers.
+A native PS3 music app (title ID `SVIZ00001`) with an original-Xbox-dashboard look: play your MP3 library from HDD/USB, stream internet radio, watch YouTube music videos, and stream podcasts — all decoded on the console, all run through a real 5-band parametric EQ and audio-reactive visualizers.
 
-**New in 1.19:** Internet Radio (11 built-in stations — SomaFM, Radio Paradise, KEXP — plus your own via `USRDIR/stations.txt`), a sleep timer with fade-out, `.m3u`/`.m3u8` playlist import, history-aware shuffle, Most Played, playlist sorting, an idle screensaver, and eleven bug fixes from a full code audit.
+**New in 1.20:** Podcasts — subscribe by RSS or search the iTunes directory in-app — with episode resume that remembers where you stopped, repeat modes (off / all / one), save queue as an `.m3u` playlist, a waveform visualizer, a corner clock on menu screens, sleep at end of track, and a Donate sidebar entry with a QR code (https://paypal.me/iphoneuser1111). **New in 1.19:** Internet Radio (11 built-in stations — SomaFM, Radio Paradise, KEXP — plus your own via `USRDIR/stations.txt`), a sleep timer with fade-out, `.m3u`/`.m3u8` playlist import, history-aware shuffle, Most Played, playlist sorting, an idle screensaver, and eleven bug fixes from a full code audit.
 
-- Download: [GitHub release v1.19](https://github.com/richard1222/PS3-Music-Visualizers/releases/tag/neon-lounge-1.19) · [Brewology listing](https://store.brewology.com/ps3/neon-lounge/)
+- Download: [GitHub release v1.20](https://github.com/richard1222/PS3-Music-Visualizers/releases/tag/neon-lounge-1.20) · [Brewology listing](https://store.brewology.com/ps3/neon-lounge/)
 - Full app documentation: [standalone/README.md](standalone/README.md)
 - Requirements: PS3 with CFW or HEN. Install the PKG and launch from the XMB.
 
