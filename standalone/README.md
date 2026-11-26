@@ -1,20 +1,48 @@
 # Neon Lounge
 
+**Current version: 1.19** — [GitHub release](https://github.com/richard1222/PS3-Music-Visualizers/releases/tag/neon-lounge-1.19) · [Brewology listing](https://store.brewology.com/ps3/neon-lounge/)
+
 A standalone native PS3 music-player app (title ID `SVIZ00001`), built with
 PSL1GHT, SDL2, minimp3 and the RSX/GCM display backend. This is the app track
 of PS3-Music-Visualizers, separate from the built-in Visual Player resources
-in the rest of this repo.
+in the rest of this repo. The interface wears an original-Xbox-dashboard
+theme, with a spinning mini Xbox console in the menu.
 
 ## What it does
 
 - MP3 playback from the internal HDD (`/dev_hdd0/music`, `/dev_hdd0`) and USB
   (`/dev_usb000`, `/dev_usb001`), with folder browsing and a playlist.
-- An audio-reactive spectrum visualizer over a 7-slide artwork gallery
-  (12-second auto-advance, Left/Right to step).
+  Playlists can be sorted (Name A-Z / Z-A, Newest, Oldest), shuffled with a
+  history-aware queue, and every play is counted — the playlist view builds
+  a Most Played queue from your top 100. `.m3u` / `.m3u8` playlist files
+  appear in the browser as `[Playlist]` entries and load as the play queue.
+- Internet Radio (Radio section): eleven built-in stations — nine SomaFM
+  channels (Groove Salad, Lush, Secret Agent, Drone Zone, DEF CON Radio,
+  Boot Liquor, Sonic Universe, Underground 80s, Ill Street Lounge), Radio
+  Paradise and KEXP. Add your own in `USRDIR/stations.txt`, one per line:
+  station name, a TAB, then the stream URL.
+- YouTube: search and play music videos and audio, decoded on the console
+  itself. Triangle on a result adds it to your playlist, Square saves a
+  favorite; playlists and favorites persist between sessions.
+- PC Audio: stream whatever is playing on a Windows PC on the same LAN
+  (see the PC Audio section below).
+- A real 5-band parametric EQ (+/-12 dB per band) with six built-in presets
+  (Flat, Bass Boost, Treble Boost, Vocal, Bright, Warm) and three custom
+  slots you can save yourself. The EQ applies to local music, radio,
+  YouTube and PC Audio alike.
+- Audio-reactive visualizers — Bars, Peak Rain, Jewel Pulse and Radial
+  Sunburst — over a 7-slide artwork gallery (12-second auto-advance,
+  Left/Right to step).
 - Artwork options (Artwork section): view the gallery, add BMP artwork from
   HDD/USB (1280x720 or smaller, 8 MB max, 7 slides max), remove the current
   artwork (moved to a backup folder, not deleted), and a list of sites to
   get pictures from (X, DeviantArt, Pixiv, ArtStation, Zerochan, Pinterest).
+  A built-in FTP server accepts artwork uploads with the same rules.
+- Sleep timer (Settings): Off / 15 / 30 / 45 / 60 / 90 minutes, with a
+  10-second volume fade-out before playback stops, and a countdown in the
+  footer. An idle screensaver (clock + what's playing, repositioned every
+  30 seconds against burn-in) takes over after two minutes without input;
+  videos and the visualizer are exempt.
 - Check for updates (Settings section): fetches `standalone/update.json`
   from this repo, and if a newer version exists, downloads the new
   `neon_lounge.pkg` from the matching GitHub release, verifies its SHA-256,
@@ -22,8 +50,12 @@ in the rest of this repo.
   XMB Package Manager. The app cannot replace its own running program
   file, so updates are delivered as a package instead of an EBOOT swap.
 
-Controls: X select, O back, START pause, L1/R1 previous/next track,
-L2/R2 volume, Left/Right artwork (in the gallery) and volume (in Settings).
+Controls: X select / play, O back, START pause, L1/R1 previous/next track,
+L2/R2 volume, Left/Right artwork (in the gallery) and volume (in Settings),
+Square shuffle on/off (Music views) and save EQ preset (on the EQ preset
+row), SELECT playlist sort order (playlist view), Triangle Most Played
+(playlist view), switch visualizer (Visualizer view), add to playlist
+(YouTube results).
 
 ## Building
 
@@ -81,7 +113,7 @@ HTTPS, including redirects, and the downloaded package's SHA-256 is checked
 against `update.json` before staging. A missing or invalid certificate bundle
 fails the update; it never falls back to an unverified connection.
 
-## PC Audio (development candidate)
+## PC Audio
 
 The Music screen has a PC Audio connect/disconnect button. Start the companion
 on a Windows PC on the same LAN, then connect from the PS3. Spotify or YouTube
@@ -102,6 +134,11 @@ The companion captures the PC's default speaker output, not its microphone,
 and saves no audio. Capture starts on connection; Ctrl+C stops the companion.
 Notifications and other sounds on that output will be shared too. Keep PS3
 capture monitoring off that same output to avoid an audio feedback loop.
+
+Known limitation: the app's discovery trusts the first well-formed responder
+on the LAN. A one-time pairing update (a code shown on the PC, entered once
+in Neon, after which only the paired PC is accepted) is the planned fix;
+until then, use PC Audio on networks you trust.
 
 PC mode uses a separate network thread and a bounded PCM buffer (150 ms startup,
 500 ms maximum), with silence on starvation. L2/R2 and Start retain volume and
